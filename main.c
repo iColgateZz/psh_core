@@ -1,7 +1,9 @@
-#include <stdio.h>
+#include "fun.h"
 #include "types.h"
 
+
 i32 main(void) {
-    printf("Hi, mom!\n");
-    return 0;
+    byte *argv[] = {"./lol.sh", NULL};
+
+    return _fun(argv);
 }
