@@ -7,7 +7,7 @@
 #include "fun.h"
 
 
-b32 _fun(byte *argv[], i32 n, b32 async) {
+b32 _fun(Cmd *cmd, i32 n, b32 async) {
     for (int i = 0; i < n; ++i) {
         pid_t pid = fork();
         if (pid) {
@@ -17,7 +17,7 @@ b32 _fun(byte *argv[], i32 n, b32 async) {
                 return -1;
             }
         } else {
-            execvp(argv[0], argv);
+            execvp(cmd->items[0], cmd->items);
             fprintf(stderr, "%s\n", strerror(errno));
             return -1;
         }
@@ -26,6 +26,6 @@ b32 _fun(byte *argv[], i32 n, b32 async) {
     return 0;
 }
 
-b32 fun2(byte *argv[], _funparams params) {
-    return _fun(argv, params.n, params.async);
+b32 fun2(Cmd *cmd, _funparams params) {
+    return _fun(cmd, params.n, params.async);
 }

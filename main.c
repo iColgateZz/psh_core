@@ -1,24 +1,18 @@
 #include "fun.h"
 #include "types.h"
-#include "da.h"
+#include "cmd.h"
 #include <stdio.h>
-
-typedef struct {
-    byte **items;
-    isize count;
-    isize capacity;
-} Cmd;
 
 i32 main(void) {
     Cmd cmd = {0};
 
-    da_append(&cmd, "LOL");
-    da_append_many(&cmd, ((byte *[]){"haha", "lol", "cringe"}), 3);
+    cmd_append(&cmd, "echo", "Hello, World", "!");
+    cmd_append(&cmd, NULL);
+    // da_foreach(byte *, i, &cmd) {
+    //     printf("%s\n", *i);
+    // }
 
-    da_foreach(byte *, iter, &cmd) {
-        printf("%s\n", *iter);
-    }
+    fun(&cmd, .n=10);
 
-    da_free(cmd);
     return 0;
 }

@@ -24,13 +24,13 @@
     do {                                                                                   \
         if ((expected_capacity) > (da)->capacity) {                                        \
             if ((da)->capacity == 0) {                                                     \
-                (da)->capacity = DA_INIT_CAP;                                          \
+                (da)->capacity = DA_INIT_CAP;                                              \
             }                                                                              \
             while ((expected_capacity) > (da)->capacity) {                                 \
                 (da)->capacity *= 2;                                                       \
             }                                                                              \
-            (da)->items = DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items)); \
-            DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                         \
+            (da)->items = DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
+            DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
         }                                                                                  \
     } while (0)
 
@@ -40,8 +40,6 @@
         da_reserve((da), (da)->count + 1);      \
         (da)->items[(da)->count++] = (item);    \
     } while (0)
-
-#endif
 
 #define da_free(da) DA_FREE((da).items)
 
@@ -54,3 +52,14 @@
     } while (0)
 
 #define da_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+
+// May be used for cleanup
+#define da_resize(da, new_size)         \
+    do {                                \
+        da_reserve((da), new_size);     \
+        (da)->count = (new_size);       \
+    } while (0)
+
+#define da_last(da) (da)->items[(DA_ASSERT((da)->count > 0), (da)->count-1)]
+
+#endif
