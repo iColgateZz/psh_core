@@ -1,0 +1,18 @@
+- Command execution
+- sync / async
+- limit the amount of processes
+- redirections
+- logging
+
+SYNC:
+    cmd_run(...)
+    runs the command and waits for it immediately
+    return the PID
+
+ASYNC:
+    cmd_run(...)
+    run the command and do not wait
+    return the pid / put the pid in an array f PIDs
+
+    There should be some other function that later
+    waits for all the async processes to finish

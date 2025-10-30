@@ -62,4 +62,13 @@
 
 #define da_last(da) (da)->items[(DA_ASSERT((da)->count > 0), (da)->count-1)]
 
+// Replace the element at given index with the last
+// element in the array and decrement the item count
+#define da_remove_unordered(da, i)                   \
+    do {                                             \
+        size_t j = (i);                              \
+        DA_ASSERT(0 <= j && j < (da)->count);        \
+        (da)->items[j] = (da)->items[--(da)->count]; \
+    } while(0)
+
 #endif

@@ -25,4 +25,7 @@ typedef uintptr_t   uptr;
 typedef ptrdiff_t   isize;
 typedef size_t      usize;
 
+#define true 1
+#define false 0
+
 #endif
