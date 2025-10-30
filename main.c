@@ -9,7 +9,7 @@ i32 main(void) {
 
     cmd_append(&cmd, "./test.sh");
 
-    for (i32 i = 0; i < 100; ++i) {
+    for (i32 i = 0; i < 10; ++i) {
         if (!cmd_run(&cmd, .async = &procs, .max_procs = 4)) return 1;
     }
 

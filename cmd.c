@@ -5,10 +5,14 @@
 #include <string.h>
 #include "log.h"
 #include "macros.h"
+#include <time.h>
 
 static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr);
 static inline b32 _cmd_wait_proc(Proc pid);
 static inline i32 _cmd_wait_proc_async(Proc pid);
+
+#define SLEEP_MS 1
+#define SLEEP_NS SLEEP_MS * 1000 * 1000
 
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     b32 result = true;
@@ -17,13 +21,14 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     // amount of procs is left running
     if (opt.async && opt.max_procs > 0) {
         while (opt.async->count >= opt.max_procs) {
-            for (usize i = 0; i < opt.async->count; ++i) {
+            for (usize i = 0; i < opt.async->count; ) {
                 i32 ret = _cmd_wait_proc_async(opt.async->items[i]);
                 if (ret < 0) 
                     return_defer(false);
                 if (ret) {
                     da_remove_unordered(opt.async, i);
-                    break;
+                } else {
+                    ++i;
                 }
             }
         }
@@ -108,14 +113,22 @@ static inline i32 _cmd_wait_proc_async(Proc pid) {
 
     Proc ret = waitpid(pid, &wstatus, WUNTRACED | WNOHANG);
     if (ret < 0) {
-        // Do not check for EINTR
-        // The function is called in an infinite loop
+        // Interrupted by signal, will be retried later 
+        if (errno == EINTR) 
+            return 0;
         logger(ERROR, "could not wait on command (pid %d): %s", pid, strerror(errno));
         return -1;
     }
 
+    // With WNOHANG if waitpid returns 0, the process has 
+    // not yet finished running. Sleep and retry later.
     if (ret == 0) {
-        // With WNOHANG if waitpid returns 0, the process has not finished yet.
+        static struct timespec duration = {
+            .tv_sec = SLEEP_NS / (1000*1000*1000),
+            .tv_nsec = SLEEP_NS % (1000*1000*1000),
+        };
+
+        nanosleep(&duration, NULL);
         return 0;
     }
 
