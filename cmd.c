@@ -6,10 +6,12 @@
 #include "log.h"
 #include "macros.h"
 #include <time.h>
+#include "sb.h"
 
 static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr);
-static inline b32 _cmd_wait_proc(Proc pid);
-static inline i32 _cmd_wait_proc_async(Proc pid);
+static inline b32 _proc_wait(Proc pid);
+static inline i32 _proc_wait_async(Proc pid);
+static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb);
 
 #define SLEEP_MS 1
 #define SLEEP_NS SLEEP_MS * 1000 * 1000
@@ -22,7 +24,7 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     if (opt.async && opt.max_procs > 0) {
         while (opt.async->count >= opt.max_procs) {
             for (usize i = 0; i < opt.async->count; ) {
-                i32 ret = _cmd_wait_proc_async(opt.async->items[i]);
+                i32 ret = _proc_wait_async(opt.async->items[i]);
                 if (ret < 0) 
                     return_defer(false);
                 if (ret) {
@@ -41,7 +43,7 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     if (opt.async) {
         da_append(opt.async, pid);
     } else {
-        result = _cmd_wait_proc(pid);
+        result = _proc_wait(pid);
     }
 
 defer:
@@ -49,9 +51,16 @@ defer:
 }
 
 static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr) {
-    (void) fdin;
-    (void) fdout;
-    (void) fderr;
+    UNUSED(fdin);
+    UNUSED(fdout);
+    UNUSED(fderr);
+
+#ifndef NO_ECHO
+    String_Builder sb = {0};
+    _cmd_build_cstr(cmd, &sb);
+    logger(INFO, "CMD: %s", sb.items);
+    sb_free(sb);
+#endif
 
     Proc cpid = fork();
     if (cpid < 0) {
@@ -73,7 +82,7 @@ static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr) {
     return cpid;
 }
 
-static inline b32 _cmd_wait_proc(Proc pid) {
+static inline b32 _proc_wait(Proc pid) {
     i32 wstatus;
 
     for (;;) {
@@ -105,10 +114,10 @@ static inline b32 _cmd_wait_proc(Proc pid) {
         return false;
     }
 
-    UNREACHABLE("_cmd_wait_proc");
+    UNREACHABLE("_proc_wait");
 }
 
-static inline i32 _cmd_wait_proc_async(Proc pid) {
+static inline i32 _proc_wait_async(Proc pid) {
     i32 wstatus;
 
     Proc ret = waitpid(pid, &wstatus, WUNTRACED | WNOHANG);
@@ -152,13 +161,23 @@ static inline i32 _cmd_wait_proc_async(Proc pid) {
         return -1;
     }
 
-    UNREACHABLE("_cmd_wait_proc_async");
+    UNREACHABLE("_proc_wait_async");
 }
 
-b32 cmd_wait_procs(Procs procs) {
+b32 procs_wait(Procs procs) {
     b32 result = true;
     for (usize i = 0; i < procs.count; ++i) {
-        result = _cmd_wait_proc(procs.items[i]);
+        result = _proc_wait(procs.items[i]);
     }
     return result;
+}
+
+static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb) {
+    for (usize i = 0; i < cmd->count; ++i) {
+        byte *arg = cmd->items[i];
+        if (arg == NULL) return;
+        if (i > 0) sb_append(sb, ' ');
+        sb_append_cstr(sb, arg);
+    }
+    sb_append_null(sb);
 }

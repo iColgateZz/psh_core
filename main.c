@@ -13,7 +13,7 @@ i32 main(void) {
         if (!cmd_run(&cmd, .async = &procs, .max_procs = 4)) return 1;
     }
 
-    if (!cmd_wait_procs(procs)) return 1;
+    if (!procs_wait(procs)) return 1;
 
     return 0;
 }

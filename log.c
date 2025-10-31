@@ -1,6 +1,7 @@
 #include "log.h"
 #include <stdarg.h>
 #include <stdio.h>
+#include "macros.h"
 
 void logger(Log_Level level, byte *fmt, ...)
 {
