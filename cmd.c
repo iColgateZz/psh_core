@@ -7,11 +7,12 @@
 #include "macros.h"
 #include <time.h>
 #include "sb.h"
+#include "fd.h"
 
-static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr);
+static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr);
 static inline b32 _proc_wait(Proc pid);
 static inline i32 _proc_wait_async(Proc pid);
-static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb);
+static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb);
 static inline i32 _nprocs(void);
 
 #define SLEEP_MS 1
@@ -19,6 +20,9 @@ static inline i32 _nprocs(void);
 
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     b32 result = true;
+    Fd fdin = INVALID_FD; 
+    Fd fdout = INVALID_FD;
+    Fd fderr = INVALID_FD;
 
     // while loop is blocking until the allowed
     // amount of procs is left running
@@ -38,7 +42,22 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
         }
     }
 
-    Proc pid = _cmd_start_proc(cmd, 0, 0, 0);
+    if (opt.fdin) {
+        fdin = fd_open_read(opt.fdin);
+        if (fdin == INVALID_FD) return_defer(false); 
+    }
+
+    if (opt.fdout) {
+        fdout = fd_open_write(opt.fdout);
+        if (fdout == INVALID_FD) return_defer(false); 
+    }
+
+    if (opt.fderr) {
+        fderr = fd_open_write(opt.fderr);
+        if (fderr == INVALID_FD) return_defer(false); 
+    }
+
+    Proc pid = _cmd_start_proc(*cmd, fdin, fdout, fderr);
 
     if (pid == INVALID_PROC) return_defer(false);
 
@@ -49,13 +68,19 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     }
 
 defer:
+    if (fdin != INVALID_FD) fd_close(fdin);
+    if (fdout != INVALID_FD) fd_close(fdout);
+    if (fderr != INVALID_FD) fd_close(fderr);
+
     return result;
 }
 
-static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr) {
-    UNUSED(fdin);
-    UNUSED(fdout);
-    UNUSED(fderr);
+static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr) {
+    
+    if (cmd.count < 1) {
+        logger(ERROR, "Cannot run an empty command");
+        return INVALID_PROC;
+    }
 
 #ifndef NO_ECHO
     String_Builder sb = {0};
@@ -71,10 +96,30 @@ static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr) {
     }
 
     if (cpid == 0) {
-        cmd_append(cmd, NULL);
+        if (fdin != INVALID_FD) {
+            if (dup2(fdin, STDIN_FILENO) < 0) {
+                logger(ERROR, "Could not setup stdin for child process: %s", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
 
-        if (execvp(cmd->items[0], cmd->items) < 0) {
-            logger(ERROR, "Could not exec child process for %s: %s", cmd->items[0], strerror(errno));
+        if (fdout != INVALID_FD) {
+            if (dup2(fdout, STDOUT_FILENO) < 0) {
+                logger(ERROR, "Could not setup stdout for child process: %s", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        if (fderr != INVALID_FD) {
+            if (dup2(fderr, STDERR_FILENO) < 0) {
+                logger(ERROR, "Could not setup stderr for child process: %s", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        cmd_append(&cmd, NULL);
+        if (execvp(cmd.items[0], cmd.items) < 0) {
+            logger(ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
             exit(EXIT_FAILURE);
         }
 
@@ -174,9 +219,9 @@ b32 procs_wait(Procs procs) {
     return result;
 }
 
-static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb) {
-    for (usize i = 0; i < cmd->count; ++i) {
-        byte *arg = cmd->items[i];
+static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb) {
+    for (usize i = 0; i < cmd.count; ++i) {
+        byte *arg = cmd.items[i];
         if (arg == NULL) return;
         if (i > 0) sb_append(sb, ' ');
         sb_append_cstr(sb, arg);
