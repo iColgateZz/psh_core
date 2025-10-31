@@ -14,6 +14,9 @@ typedef struct {
 typedef struct {
     Procs *async;
     u8 max_procs;
+    byte *fdin;
+    byte *fdout;
+    byte *fderr;
 } Cmd_Opt;
 
 #define cmd_append(cmd, ...)                    \

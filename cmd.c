@@ -12,6 +12,7 @@ static inline Proc _cmd_start_proc(Cmd *cmd, Fd fdin, Fd fdout, Fd fderr);
 static inline b32 _proc_wait(Proc pid);
 static inline i32 _proc_wait_async(Proc pid);
 static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb);
+static inline i32 _nprocs(void);
 
 #define SLEEP_MS 1
 #define SLEEP_NS SLEEP_MS * 1000 * 1000
@@ -21,8 +22,9 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
 
     // while loop is blocking until the allowed
     // amount of procs is left running
-    if (opt.async && opt.max_procs > 0) {
-        while (opt.async->count >= opt.max_procs) {
+    u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs();
+    if (opt.async && max_procs > 0) {
+        while (opt.async->count >= max_procs) {
             for (usize i = 0; i < opt.async->count; ) {
                 i32 ret = _proc_wait_async(opt.async->items[i]);
                 if (ret < 0) 
@@ -180,4 +182,8 @@ static inline void _cmd_build_cstr(Cmd *cmd, String_Builder *sb) {
         sb_append_cstr(sb, arg);
     }
     sb_append_null(sb);
+}
+
+static inline i32 _nprocs(void) {
+    return sysconf(_SC_NPROCESSORS_ONLN);
 }
