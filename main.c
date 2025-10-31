@@ -9,11 +9,11 @@ i32 main(void) {
 
     cmd_append(&cmd, "./test.sh");
 
-    for (i32 i = 0; i < 1; ++i) {
-        if (!cmd_run(&cmd, .fdout = "file.txt")) return 1;
+    for (i32 i = 0; i < 100; ++i) {
+        if (!cmd_run(&cmd, .async = &procs)) return 1;
     }
 
-    if (!procs_wait(procs)) return 1;
+    if (!procs_flush(&procs)) return 1;
 
     return 0;
 }

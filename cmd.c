@@ -10,8 +10,11 @@
 #include "fd.h"
 
 static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr);
+static inline b32 _block_unwanted_procs(Procs *async, u8 max_procs);
+static inline void _setup_child_io(Fd fdin, Fd fdout, Fd fderr);
 static inline b32 _proc_wait(Proc pid);
 static inline i32 _proc_wait_async(Proc pid);
+static inline b32 _procs_wait(Procs procs);
 static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb);
 static inline i32 _nprocs(void);
 
@@ -24,22 +27,9 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     Fd fdout = INVALID_FD;
     Fd fderr = INVALID_FD;
 
-    // while loop is blocking until the allowed
-    // amount of procs is left running
-    u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs();
-    if (opt.async && max_procs > 0) {
-        while (opt.async->count >= max_procs) {
-            for (usize i = 0; i < opt.async->count; ) {
-                i32 ret = _proc_wait_async(opt.async->items[i]);
-                if (ret < 0) 
-                    return_defer(false);
-                if (ret) {
-                    da_remove_unordered(opt.async, i);
-                } else {
-                    ++i;
-                }
-            }
-        }
+    u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs() + 1;
+    if (opt.async) {
+        if (!_block_unwanted_procs(opt.async, max_procs)) return false;
     }
 
     if (opt.fdin) {
@@ -75,6 +65,12 @@ defer:
     return result;
 }
 
+b32 procs_flush(Procs *procs) {
+    b32 result = _procs_wait(*procs);
+    procs->count = 0;
+    return result;
+}
+
 static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr) {
     
     if (cmd.count < 1) {
@@ -96,37 +92,59 @@ static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr) {
     }
 
     if (cpid == 0) {
-        if (fdin != INVALID_FD) {
-            if (dup2(fdin, STDIN_FILENO) < 0) {
-                logger(ERROR, "Could not setup stdin for child process: %s", strerror(errno));
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        if (fdout != INVALID_FD) {
-            if (dup2(fdout, STDOUT_FILENO) < 0) {
-                logger(ERROR, "Could not setup stdout for child process: %s", strerror(errno));
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        if (fderr != INVALID_FD) {
-            if (dup2(fderr, STDERR_FILENO) < 0) {
-                logger(ERROR, "Could not setup stderr for child process: %s", strerror(errno));
-                exit(EXIT_FAILURE);
-            }
-        }
+        _setup_child_io(fdin, fdout, fderr);
 
         cmd_append(&cmd, NULL);
-        if (execvp(cmd.items[0], cmd.items) < 0) {
-            logger(ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+        execvp(cmd.items[0], cmd.items);
+
+        logger(ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
+        exit(EXIT_FAILURE);
 
         UNREACHABLE("_cmd_start_proc");
     }
 
     return cpid;
+}
+
+static inline void _setup_child_io(Fd fdin, Fd fdout, Fd fderr) {
+    if (fdin != INVALID_FD) {
+        if (dup2(fdin, STDIN_FILENO) < 0) {
+            logger(ERROR, "Could not setup stdin for child process: %s", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (fdout != INVALID_FD) {
+        if (dup2(fdout, STDOUT_FILENO) < 0) {
+            logger(ERROR, "Could not setup stdout for child process: %s", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (fderr != INVALID_FD) {
+        if (dup2(fderr, STDERR_FILENO) < 0) {
+            logger(ERROR, "Could not setup stderr for child process: %s", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+static inline b32 _block_unwanted_procs(Procs *async, u8 max_procs) {
+    // while loop blocks until the allowed
+    // amount of procs is left running
+    while (async->count >= max_procs) {
+        for (usize i = 0; i < async->count; ) {
+            i32 ret = _proc_wait_async(async->items[i]);
+            if (ret < 0) 
+                return false;
+            if (ret) {
+                da_remove_unordered(async, i);
+            } else {
+                ++i;
+            }
+        }
+    }
+    return true;
 }
 
 static inline b32 _proc_wait(Proc pid) {
@@ -211,7 +229,7 @@ static inline i32 _proc_wait_async(Proc pid) {
     UNREACHABLE("_proc_wait_async");
 }
 
-b32 procs_wait(Procs procs) {
+static inline b32 _procs_wait(Procs procs) {
     b32 result = true;
     for (usize i = 0; i < procs.count; ++i) {
         result = _proc_wait(procs.items[i]);

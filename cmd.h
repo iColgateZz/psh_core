@@ -29,6 +29,6 @@ typedef struct {
 #define cmd_run(cmd, ...)   cmd_run_opt(cmd, (Cmd_Opt) {__VA_ARGS__})
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
 
-b32 procs_wait(Procs procs);
+b32 procs_flush(Procs *procs);
 
 #endif
