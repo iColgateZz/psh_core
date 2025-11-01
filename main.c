@@ -8,12 +8,12 @@ i32 main(void) {
     Procs procs = {0};
 
     cmd_append(&cmd, "./test.sh");
+    if (!cmd_run(&cmd, .consume_cmd = true)) return 1;
 
-    for (i32 i = 0; i < 100; ++i) {
-        if (!cmd_run(&cmd, .async = &procs)) return 1;
-    }
+    cmd_append(&cmd, "echo", "Hello, World!");
+    if (!cmd_run(&cmd)) return 1;
 
-    if (!procs_flush(&procs)) return 1;
+    // if (!procs_flush(&procs)) return 1;
 
     return 0;
 }

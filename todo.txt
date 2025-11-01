@@ -3,3 +3,4 @@
 - limit the amount of processes
 - redirections
 - logging
+- pipes

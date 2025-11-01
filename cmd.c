@@ -58,9 +58,11 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     }
 
 defer:
-    if (fdin != INVALID_FD) fd_close(fdin);
+    if (fdin != INVALID_FD)  fd_close(fdin);
     if (fdout != INVALID_FD) fd_close(fdout);
     if (fderr != INVALID_FD) fd_close(fderr);
+
+    if (opt.reset) da_resize(cmd, 0);
 
     return result;
 }
