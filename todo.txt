@@ -4,3 +4,27 @@
 - redirections
 - logging
 - pipes
+
+Piping Dynamic Approach
+
+Cmd cmd = {0};
+Pipeline pipeline = {0};
+
+cmd_append(&cmd, "some command");
+if (!pipeline_chain(&pipeline, &cmd)) return 1;
+
+cmd_append(&cmd, "some other command");
+if (!pipeline_chain(&pipeline, &cmd)) return 1;
+
+pipeline_finish(&pipeline);
+
+typedef struct {
+    Procs procs;
+    Fd last_read_fd;
+} Pipeline;
+
+b32 pipeline_chain(Pipeline *p, Cmd *cmd, Cmd_Opt opt) {
+    // needs the fd-s, can be passed via opt struct.
+    // open file before the function call. More flexibility.
+    cmd_run(cmd, .async = p->procs, .reset = true);
+}

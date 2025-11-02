@@ -17,10 +17,7 @@ typedef struct {
     byte *fdin;
     byte *fdout;
     byte *fderr;
-    union {
-        b32 consume_cmd;
-        b32 reset;
-    };
+    b32 no_reset;
 } Cmd_Opt;
 
 #define cmd_append(cmd, ...)                    \

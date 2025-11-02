@@ -29,7 +29,7 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
 
     u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs() + 1;
     if (opt.async) {
-        if (!_block_unwanted_procs(opt.async, max_procs)) return false;
+        if (!_block_unwanted_procs(opt.async, max_procs)) return_defer(false);
     }
 
     if (opt.fdin) {
@@ -62,7 +62,7 @@ defer:
     if (fdout != INVALID_FD) fd_close(fdout);
     if (fderr != INVALID_FD) fd_close(fderr);
 
-    if (opt.reset) da_resize(cmd, 0);
+    if (!opt.no_reset) da_resize(cmd, 0);
 
     return result;
 }
