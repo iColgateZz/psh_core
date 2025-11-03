@@ -5,16 +5,18 @@
 
 i32 main(void) {
     Cmd cmd = {0};
-    Procs procs = {0};
+    Pipeline p = {0};
 
-    cmd_append(&cmd, "./test.sh");
-    if (!cmd_run(&cmd)) return 1;
+    cmd_append(&cmd, "ls");
+    if (!pipeline_chain(&p, &cmd)) return 1;
 
-    cmd_append(&cmd, "echo", "Hello, World!");
-    if (!cmd_run(&cmd, .no_reset = true)) return 1;
-    if (!cmd_run(&cmd, .no_reset = true)) return 1;
+    cmd_append(&cmd, "wc", "-l");
+    if (!pipeline_chain(&p, &cmd)) return 1;
 
-    // if (!procs_flush(&procs)) return 1;
+    cmd_append(&cmd, "wc", "-l");
+    if (!pipeline_chain(&p, &cmd)) return 1;
+
+    if (!pipeline_end(&p)) return 1;
 
     return 0;
 }

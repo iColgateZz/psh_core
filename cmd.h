@@ -20,6 +20,16 @@ typedef struct {
     b32 no_reset;
 } Cmd_Opt;
 
+typedef struct {
+    Procs procs;
+    Fd last_read_fd;
+} Pipeline;
+
+typedef struct {
+    byte *fdin;
+    Procs *async;
+} Pipeline_Start_Opt;
+
 #define cmd_append(cmd, ...)                    \
     da_append_many(cmd,                         \
         ((byte *[]){__VA_ARGS__}),              \
@@ -31,5 +41,8 @@ typedef struct {
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
 
 b32 procs_flush(Procs *procs);
+
+b32 pipeline_chain(Pipeline *p, Cmd *cmd);
+b32 pipeline_end(Pipeline *p);
 
 #endif

@@ -252,3 +252,43 @@ static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb) {
 static inline i32 _nprocs(void) {
     return sysconf(_SC_NPROCESSORS_ONLN);
 }
+
+b32 pipeline_chain(Pipeline *p, Cmd *cmd) {
+    Fd fds[2];
+    if (pipe(fds) < 0) {
+        logger(ERROR, "Could not open pipes %s", strerror(errno));
+        return false;
+    }
+
+    b32 result = true;
+    Fd new_read_end = fds[0];
+    Fd write_end = fds[1];
+
+    Proc pid = _cmd_start_proc(*cmd, p->last_read_fd, write_end, INVALID_FD);
+    if (pid == INVALID_PROC) {
+        fd_close(new_read_end);
+        return_defer(false);
+    }
+
+    da_append(&p->procs, pid);
+defer:
+    fd_close(write_end);
+    if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
+    p->last_read_fd = new_read_end;
+    cmd->count = 0;
+
+    return result;
+}
+
+b32 pipeline_end(Pipeline *p) {
+    isize n;
+    const usize buf_size = 256;
+    static byte buffer[buf_size];
+    
+    while ((n = read(p->last_read_fd, buffer, buf_size - 1)) > 0) {
+        write(STDOUT_FILENO, buffer, n);
+    } // read blocks?
+
+    fd_close(p->last_read_fd);
+    return n == 0;
+}
