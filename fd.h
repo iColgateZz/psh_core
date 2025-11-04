@@ -6,8 +6,8 @@
 typedef i32 Fd;
 #define INVALID_FD -1
 
-Fd fd_open_read(byte *path);
-Fd fd_open_write(byte *path);
+Fd fd_read(byte *path);
+Fd fd_write(byte *path);
 void fd_close(Fd fd);
 
 #endif

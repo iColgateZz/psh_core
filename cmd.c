@@ -17,6 +17,7 @@ static inline i32 _proc_wait_async(Proc pid);
 static inline b32 _procs_wait(Procs procs);
 static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb);
 static inline i32 _nprocs(void);
+static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt, Fd pipe_fdin, Fd pipe_fdout);
 
 #define SLEEP_MS 1
 #define SLEEP_NS SLEEP_MS * 1000 * 1000
@@ -249,28 +250,16 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
         if (pipe(fds) < 0) {
             p->error = true;
             logger(ERROR, "Could not create pipes %s", strerror(errno));
-            // close fd if it is a non-standard one
             if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
             return false;
         }
 
-        Cmd_Opt prev_cmd_opt = p->cmd_opt;
-        Pipeline_Opt pipe_options = p->p_opt;
-
-        //TODO this code overrides redirection.
-        // Redirection is of higher priority.
-        prev_cmd_opt.fdin = p->last_read_fd;
-        prev_cmd_opt.fdout = fds[STDOUT_FILENO];
-        prev_cmd_opt.async = pipe_options.async;
-        prev_cmd_opt.max_procs = pipe_options.max_procs;
-
+        _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, fds[STDOUT_FILENO]);
         // closes all fds passed to it
-        b32 ok = cmd_run_opt(&p->cmd, prev_cmd_opt);
+        b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
 
         if (!ok) {
             p->error = true;
-            // close fd that would otherwise be
-            // passed to the next cmd
             fd_close(fds[STDIN_FILENO]);
             return false;
         }
@@ -278,7 +267,6 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
         p->last_read_fd = fds[STDIN_FILENO];
     }
 
-    // save cmd and cmd_opt
     p->cmd_opt = new_cmd_opt;
     p->cmd = (Cmd) {0};
     da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
@@ -291,12 +279,33 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
 b32 pipeline_end(Pipeline *p) {
     if (p->error) return false;
 
-    p->cmd_opt.fdin = p->last_read_fd;
-    p->cmd_opt.async = p->p_opt.async;
-    p->cmd_opt.max_procs = p->p_opt.max_procs;
-
+    _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
     b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
-    *p = (Pipeline) {0};
 
+    *p = (Pipeline) {0};
     return ok;
+}
+
+static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt,
+                                       Fd pipe_fdin, Fd pipe_fdout) {
+    // If prev_opt has non-default settings it means 
+    // the user has opened a file for redirection. 
+    // Close the fds from pipes and leave user fds.
+    if (prev_opt->fdin != STDIN_FILENO) {
+        if (pipe_fdin != STDIN_FILENO)
+            fd_close(pipe_fdin);
+    } else {
+        // Otherwise setup pipe fds
+        prev_opt->fdin = pipe_fdin;
+    }
+
+    if (prev_opt->fdout != STDOUT_FILENO) {
+        if (pipe_fdout != STDOUT_FILENO)
+            fd_close(pipe_fdout);
+    } else {
+        prev_opt->fdout = pipe_fdout;
+    }
+    
+    prev_opt->async = pipe_opt.async;
+    prev_opt->max_procs = pipe_opt.max_procs;
 }
