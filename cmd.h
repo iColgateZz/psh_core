@@ -31,6 +31,7 @@ typedef struct {
     Cmd cmd;
     Cmd_Opt cmd_opt;
     Pipeline_Opt p_opt;
+    b32 error;
 } Pipeline;
 
 #define cmd_append(cmd, ...)                    \
@@ -59,8 +60,8 @@ b32 procs_flush(Procs *procs);
 b32 pipeline_chain_opt(Pipeline *p, Cmd *cmd, Cmd_Opt opt);
 b32 pipeline_end(Pipeline *p);
 
-#define pipeline_scope(p, status, ...) \
+#define pipeline_scope(p, ...) \
     for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
-                      latch; latch = 0, status = pipeline_end(p))
+                      latch; latch = 0, pipeline_end(p))
 
 #endif

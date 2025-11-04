@@ -241,12 +241,16 @@ static inline i32 _nprocs(void) {
 }
 
 b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
+    if (p->error) return false;
+
     // Execute previous cmd
     if (p->cmd.count != 0) {
         Fd fds[2];
         if (pipe(fds) < 0) {
+            p->error = true;
             logger(ERROR, "Could not create pipes %s", strerror(errno));
-            fd_close(p->last_read_fd);
+            // close fd if it is a non-standard one
+            if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
             return false;
         }
 
@@ -260,9 +264,13 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
         prev_cmd_opt.async = pipe_options.async;
         prev_cmd_opt.max_procs = pipe_options.max_procs;
 
+        // closes all fds passed to it
         b32 ok = cmd_run_opt(&p->cmd, prev_cmd_opt);
 
         if (!ok) {
+            p->error = true;
+            // close fd that would otherwise be
+            // passed to the next cmd
             fd_close(fds[STDIN_FILENO]);
             return false;
         }
@@ -270,6 +278,7 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
         p->last_read_fd = fds[STDIN_FILENO];
     }
 
+    // save cmd and cmd_opt
     p->cmd_opt = new_cmd_opt;
     p->cmd = (Cmd) {0};
     da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
@@ -280,6 +289,8 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
 }
 
 b32 pipeline_end(Pipeline *p) {
+    if (p->error) return false;
+
     p->cmd_opt.fdin = p->last_read_fd;
     p->cmd_opt.async = p->p_opt.async;
     p->cmd_opt.max_procs = p->p_opt.max_procs;
