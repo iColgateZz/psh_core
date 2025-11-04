@@ -23,31 +23,17 @@ static inline i32 _nprocs(void);
 
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     b32 result = true;
-    Fd fdin = INVALID_FD; 
-    Fd fdout = INVALID_FD;
-    Fd fderr = INVALID_FD;
+
+    if (opt.fdin == INVALID_FD)  return_defer(false);
+    if (opt.fdout == INVALID_FD) return_defer(false);
+    if (opt.fderr == INVALID_FD) return_defer(false);
 
     u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs() + 1;
     if (opt.async) {
         if (!_block_unwanted_procs(opt.async, max_procs)) return_defer(false);
     }
 
-    if (opt.fdin) {
-        fdin = fd_open_read(opt.fdin);
-        if (fdin == INVALID_FD) return_defer(false); 
-    }
-
-    if (opt.fdout) {
-        fdout = fd_open_write(opt.fdout);
-        if (fdout == INVALID_FD) return_defer(false); 
-    }
-
-    if (opt.fderr) {
-        fderr = fd_open_write(opt.fderr);
-        if (fderr == INVALID_FD) return_defer(false); 
-    }
-
-    Proc pid = _cmd_start_proc(*cmd, fdin, fdout, fderr);
+    Proc pid = _cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
 
     if (pid == INVALID_PROC) return_defer(false);
 
@@ -58,9 +44,9 @@ b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
     }
 
 defer:
-    if (fdin != INVALID_FD)  fd_close(fdin);
-    if (fdout != INVALID_FD) fd_close(fdout);
-    if (fderr != INVALID_FD) fd_close(fderr);
+    if (opt.fdin > STDERR_FILENO)  fd_close(opt.fdin);
+    if (opt.fdout > STDERR_FILENO) fd_close(opt.fdout);
+    if (opt.fderr > STDERR_FILENO) fd_close(opt.fderr);
 
     if (!opt.no_reset) da_resize(cmd, 0);
 
@@ -109,23 +95,24 @@ static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr) {
 }
 
 static inline void _setup_child_io(Fd fdin, Fd fdout, Fd fderr) {
+    // logger(INFO, "Fds: %d, %d, %d", fdin, fdout, fderr);
     if (fdin != INVALID_FD) {
         if (dup2(fdin, STDIN_FILENO) < 0) {
-            logger(ERROR, "Could not setup stdin for child process: %s", strerror(errno));
+            logger(ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
     if (fdout != INVALID_FD) {
         if (dup2(fdout, STDOUT_FILENO) < 0) {
-            logger(ERROR, "Could not setup stdout for child process: %s", strerror(errno));
+            logger(ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
     if (fderr != INVALID_FD) {
         if (dup2(fderr, STDERR_FILENO) < 0) {
-            logger(ERROR, "Could not setup stderr for child process: %s", strerror(errno));
+            logger(ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -253,42 +240,52 @@ static inline i32 _nprocs(void) {
     return sysconf(_SC_NPROCESSORS_ONLN);
 }
 
-b32 pipeline_chain(Pipeline *p, Cmd *cmd) {
-    Fd fds[2];
-    if (pipe(fds) < 0) {
-        logger(ERROR, "Could not open pipes %s", strerror(errno));
-        return false;
+b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
+    // Execute previous cmd
+    if (p->cmd.count != 0) {
+        Fd fds[2];
+        if (pipe(fds) < 0) {
+            logger(ERROR, "Could not create pipes %s", strerror(errno));
+            fd_close(p->last_read_fd);
+            return false;
+        }
+
+        Cmd_Opt prev_cmd_opt = p->cmd_opt;
+        Pipeline_Opt pipe_options = p->p_opt;
+
+        //TODO this code overrides redirection.
+        // Redirection is of higher priority.
+        prev_cmd_opt.fdin = p->last_read_fd;
+        prev_cmd_opt.fdout = fds[STDOUT_FILENO];
+        prev_cmd_opt.async = pipe_options.async;
+        prev_cmd_opt.max_procs = pipe_options.max_procs;
+
+        b32 ok = cmd_run_opt(&p->cmd, prev_cmd_opt);
+
+        if (!ok) {
+            fd_close(fds[STDIN_FILENO]);
+            return false;
+        }
+
+        p->last_read_fd = fds[STDIN_FILENO];
     }
 
-    b32 result = true;
-    Fd new_read_end = fds[0];
-    Fd write_end = fds[1];
+    p->cmd_opt = new_cmd_opt;
+    p->cmd = (Cmd) {0};
+    da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
 
-    Proc pid = _cmd_start_proc(*cmd, p->last_read_fd, write_end, INVALID_FD);
-    if (pid == INVALID_PROC) {
-        fd_close(new_read_end);
-        return_defer(false);
-    }
+    if (!p->p_opt.no_reset) new_cmd->count = 0;
 
-    da_append(&p->procs, pid);
-defer:
-    fd_close(write_end);
-    if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
-    p->last_read_fd = new_read_end;
-    cmd->count = 0;
-
-    return result;
+    return true;
 }
 
 b32 pipeline_end(Pipeline *p) {
-    isize n;
-    const usize buf_size = 256;
-    static byte buffer[buf_size];
-    
-    while ((n = read(p->last_read_fd, buffer, buf_size - 1)) > 0) {
-        write(STDOUT_FILENO, buffer, n);
-    } // read blocks?
+    p->cmd_opt.fdin = p->last_read_fd;
+    p->cmd_opt.async = p->p_opt.async;
+    p->cmd_opt.max_procs = p->p_opt.max_procs;
 
-    fd_close(p->last_read_fd);
-    return n == 0;
+    b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
+    *p = (Pipeline) {0};
+
+    return ok;
 }

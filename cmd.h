@@ -4,6 +4,8 @@
 #include "da.h"
 #include "types.h"
 #include "proc.h"
+#include "fd.h"
+#include <unistd.h>
 
 typedef struct {
     byte **items;
@@ -14,21 +16,22 @@ typedef struct {
 typedef struct {
     Procs *async;
     u8 max_procs;
-    byte *fdin;
-    byte *fdout;
-    byte *fderr;
+    Fd fdin, fdout, fderr;
     b32 no_reset;
 } Cmd_Opt;
 
 typedef struct {
-    Procs procs;
-    Fd last_read_fd;
-} Pipeline;
+    Procs *async;
+    u8 max_procs;
+    b32 no_reset;
+} Pipeline_Opt;
 
 typedef struct {
-    byte *fdin;
-    Procs *async;
-} Pipeline_Start_Opt;
+    Fd last_read_fd;
+    Cmd cmd;
+    Cmd_Opt cmd_opt;
+    Pipeline_Opt p_opt;
+} Pipeline;
 
 #define cmd_append(cmd, ...)                    \
     da_append_many(cmd,                         \
@@ -37,12 +40,27 @@ typedef struct {
 
 #define cmd_free(cmd) da_free(cmd)
 
-#define cmd_run(cmd, ...)   cmd_run_opt(cmd, (Cmd_Opt) {__VA_ARGS__})
+#define cmd_run(cmd, ...)   cmd_run_opt(cmd,    \
+            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
+                       .fdout = STDOUT_FILENO,  \
+                       .fderr = STDERR_FILENO,  \
+                       __VA_ARGS__              \
+                    })
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
-
 b32 procs_flush(Procs *procs);
 
-b32 pipeline_chain(Pipeline *p, Cmd *cmd);
+#define pipeline_chain(pipeline, cmd, ...)  \
+        pipeline_chain_opt(pipeline, cmd,   \
+            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
+                       .fdout = STDOUT_FILENO,  \
+                       .fderr = STDERR_FILENO,  \
+                       __VA_ARGS__              \
+                    })
+b32 pipeline_chain_opt(Pipeline *p, Cmd *cmd, Cmd_Opt opt);
 b32 pipeline_end(Pipeline *p);
+
+#define pipeline_scope(p, status, ...) \
+    for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
+                      latch; latch = 0, status = pipeline_end(p))
 
 #endif
