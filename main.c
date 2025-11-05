@@ -9,7 +9,7 @@ i32 main(void) {
     Procs procs = {0};
     Pipeline p = {0};
     
-    pipeline_scope(&p, .async = &procs) {
+    pipeline(&p, .async = &procs) {
         cmd_append(&cmd, "./test.sh");
         pipeline_chain(&p, &cmd);
 
@@ -20,7 +20,7 @@ i32 main(void) {
         pipeline_chain(&p, &cmd, .fdin = fd_read("test.sh"), .fdout = fd_write("file.txt"));
     } if (p.error) return 1;
 
-    pipeline_scope(&p, .async = &procs) {
+    pipeline(&p, .async = &procs) {
         cmd_append(&cmd, "./test.sh");
         pipeline_chain(&p, &cmd);
 

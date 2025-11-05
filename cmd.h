@@ -60,7 +60,7 @@ b32 procs_flush(Procs *procs);
 b32 pipeline_chain_opt(Pipeline *p, Cmd *cmd, Cmd_Opt opt);
 b32 pipeline_end(Pipeline *p);
 
-#define pipeline_scope(p, ...) \
+#define pipeline(p, ...) \
     for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
                       latch; latch = 0, pipeline_end(p))
 
