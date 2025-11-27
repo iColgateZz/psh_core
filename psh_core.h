@@ -1,13 +1,11 @@
 #ifndef PSH_CORE_INCLUDE
 #define PSH_CORE_INCLUDE
 
-#include <unistd.h>
-#include <errno.h>
 #include <string.h>
-#include <fcntl.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Data types START
 typedef uint8_t     u8;
@@ -41,12 +39,10 @@ typedef size_t      usize;
 #endif
 
 #ifndef DA_REALLOC
-    #include <stdlib.h>
     #define DA_REALLOC realloc
 #endif
 
 #ifndef DA_FREE
-    #include <stdlib.h>
     #define DA_FREE free
 #endif
 
@@ -98,7 +94,7 @@ typedef size_t      usize;
 // element in the array and decrement the item count
 #define da_remove_unordered(da, i)                   \
     do {                                             \
-        size_t j = (i);                              \
+        usize j = (i);                               \
         DA_ASSERT(0 <= j && j < (da)->count);        \
         (da)->items[j] = (da)->items[--(da)->count]; \
     } while(0)
@@ -237,7 +233,11 @@ typedef struct {
 #ifdef PSH_CORE_IMPL
 
 #include <stdarg.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
 
+// logger impl START
 void logger(Log_Level level, byte *fmt, ...)
 {
     switch (level) {
@@ -260,6 +260,36 @@ void logger(Log_Level level, byte *fmt, ...)
     vfprintf(stderr, fmt, args);
     va_end(args);
     fprintf(stderr, "\n");
+}
+// logger impl END
+
+Fd fd_open(byte *path, i32 mode, i32 permissions) {
+    Fd result = open(path, mode, permissions);
+    if (result < 0) {
+        logger(ERROR, "Could not open file %s: %s", path, strerror(errno));
+        return INVALID_FD;
+    }
+    return result;
+}
+
+Fd fd_read(byte *path) {
+    return fd_open(path, O_RDONLY, 0);
+}
+
+Fd fd_write(byte *path) {
+    return fd_open(path, 
+                   O_WRONLY | O_CREAT | O_TRUNC,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+}
+
+Fd fd_append(byte *path) {
+    return fd_open(path, 
+                   O_WRONLY | O_CREAT | O_APPEND,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+}
+
+void fd_close(Fd fd) {
+    close(fd);
 }
 
 
