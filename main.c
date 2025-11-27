@@ -1,6 +1,5 @@
-#include "types.h"
-#include <stdio.h>
 #define PSH_CORE_IMPL
+#define PSH_CORE_NO_PREFIX
     #include "psh_core.h"
 
 i32 main(void) {

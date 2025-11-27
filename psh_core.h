@@ -132,7 +132,7 @@ void psh_logger(Psh_Log_Level level, byte *fmt, ...);
 // process START
 
 typedef i32 Psh_Proc;
-#define INVALID_PROC -1
+#define PSH_INVALID_PROC -1
 
 typedef struct {
     Psh_Proc *items;
@@ -144,7 +144,7 @@ typedef struct {
 // fd START
 
 typedef i32 Psh_Fd;
-#define INVALID_FD -1
+#define PSH_INVALID_FD -1
 
 Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions);
 Psh_Fd psh_fd_read(byte *path);
@@ -279,7 +279,7 @@ Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions) {
     Psh_Fd result = open(path, mode, permissions);
     if (result < 0) {
         psh_logger(PSH_ERROR, "Could not open file %s: %s", path, strerror(errno));
-        return INVALID_FD;
+        return PSH_INVALID_FD;
     }
     return result;
 }
@@ -319,9 +319,9 @@ static inline i32 psh__nprocs(void);
 b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     b32 result = true;
 
-    if (opt.fdin == INVALID_FD)  psh_return_defer(false);
-    if (opt.fdout == INVALID_FD) psh_return_defer(false);
-    if (opt.fderr == INVALID_FD) psh_return_defer(false);
+    if (opt.fdin == PSH_INVALID_FD)  psh_return_defer(false);
+    if (opt.fdout == PSH_INVALID_FD) psh_return_defer(false);
+    if (opt.fderr == PSH_INVALID_FD) psh_return_defer(false);
 
     u8 max_procs = opt.max_procs > 0 ? opt.max_procs : psh__nprocs() + 1;
     if (opt.async) {
@@ -330,7 +330,7 @@ b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
 
     Psh_Proc pid = psh__cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
 
-    if (pid == INVALID_PROC) psh_return_defer(false);
+    if (pid == PSH_INVALID_PROC) psh_return_defer(false);
 
     if (opt.async) {
         psh_da_append(opt.async, pid);
@@ -358,7 +358,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     
     if (cmd.count < 1) {
         psh_logger(PSH_ERROR, "Cannot run an empty command");
-        return INVALID_PROC;
+        return PSH_INVALID_PROC;
     }
 
 #ifndef NO_ECHO
@@ -371,7 +371,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     Psh_Proc cpid = fork();
     if (cpid < 0) {
         psh_logger(PSH_ERROR, "Could not fork for child process %s", strerror(errno));
-        return INVALID_PROC;
+        return PSH_INVALID_PROC;
     }
 
     if (cpid == 0) {
@@ -391,21 +391,21 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
 
 static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr) {
     // psh_logger(PSH_INFO, "Psh_Fds: %d, %d, %d", fdin, fdout, fderr);
-    if (fdin != INVALID_FD) {
+    if (fdin != PSH_INVALID_FD) {
         if (dup2(fdin, STDIN_FILENO) < 0) {
             psh_logger(PSH_ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
-    if (fdout != INVALID_FD) {
+    if (fdout != PSH_INVALID_FD) {
         if (dup2(fdout, STDOUT_FILENO) < 0) {
             psh_logger(PSH_ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
-    if (fderr != INVALID_FD) {
+    if (fderr != PSH_INVALID_FD) {
         if (dup2(fderr, STDERR_FILENO) < 0) {
             psh_logger(PSH_ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
             exit(EXIT_FAILURE);
@@ -615,3 +615,61 @@ static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_opt, Psh_Pipeline_O
 // pipeline IMPL END
 
 #endif // PSH_CORE_IMPL
+
+#ifdef PSH_CORE_NO_PREFIX
+
+#define da_reserve          psh_da_reserve
+#define da_append           psh_da_append
+#define da_free             psh_da_free
+#define da_append_many      psh_da_append_many
+#define da_foreach          psh_da_foreach
+#define da_resize           psh_da_resize
+#define da_last             psh_da_last
+#define da_remove_unordered psh_da_remove_unordered
+
+#define return_defer        psh_return_defer
+#define UNREACHABLE         PSH_UNREACHABLE
+#define UNUSED              PSH_UNUSED
+
+typedef Psh_Log_Level       Log_Level;
+#define INFO                PSH_INFO
+#define WARNING             PSH_WARNING
+#define ERROR               PSH_ERROR
+#define NO_LOGS             PSH_NO_LOGS
+#define logger              psh_logger
+
+typedef Psh_Proc            Proc;
+#define INVALID_PROC        PSH_INVALID_PROC
+typedef Psh_Procs           Procs;
+
+typedef Psh_Fd              Fd;
+#define INVALID_FD          PSH_INVALID_FD
+#define fd_open             psh_fd_open
+#define fd_read             psh_fd_read
+#define fd_write            psh_fd_write
+#define fd_append           psh_fd_append
+#define fd_close            psh_fd_close
+
+typedef Psh_Cmd             Cmd;
+typedef Psh_Cmd_Opt         Cmd_Opt;
+#define cmd_append          psh_cmd_append
+#define cmd_free            psh_cmd_free
+#define cmd_run             psh_cmd_run
+#define cmd_run_opt         psh_cmd_run_opt
+#define procs_flush         psh_procs_flush
+
+typedef Psh_Pipeline_Opt    Pipeline_Opt;
+typedef Psh_Pipeline        Pipeline;
+#define pipeline_chain      psh_pipeline_chain
+#define pipeline_chain_opt  psh_pipeline_chain_opt
+#define pipeline_end        psh_pipeline_end
+#define pipeline            psh_pipeline
+
+typedef Psh_String_Builder  String_Builder;
+#define sb_append           psh_sb_append
+#define sb_append_buf       psh_sb_append_buf
+#define sb_append_cstr      psh_sb_append_cstr
+#define sb_append_null      psh_sb_append_null
+#define sb_free             psh_sb_free
+
+#endif // PSH_CORE_NO_PREFIX
