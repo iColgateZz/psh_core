@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 
+// Data types START
 typedef uint8_t     u8;
 typedef uint16_t    u16;
 typedef uint32_t    u32;
@@ -31,7 +32,9 @@ typedef size_t      usize;
 
 #define true 1
 #define false 0
+// Data types END
 
+// da START
 #ifndef DA_ASSERT
     #include <assert.h>
 #define DA_ASSERT assert
@@ -99,16 +102,9 @@ typedef size_t      usize;
         DA_ASSERT(0 <= j && j < (da)->count);        \
         (da)->items[j] = (da)->items[--(da)->count]; \
     } while(0)
+// da END
 
-typedef i32 Proc;
-#define INVALID_PROC -1
-
-typedef struct {
-    Proc *items;
-    usize count;
-    usize capacity;
-} Procs;
-
+// logger START
 typedef enum {
     INFO, 
     WARNING,
@@ -117,7 +113,20 @@ typedef enum {
 } Log_Level;
 
 void logger(Log_Level level, byte *fmt, ...);
+// logger END
 
+// process START
+typedef i32 Proc;
+#define INVALID_PROC -1
+
+typedef struct {
+    Proc *items;
+    usize count;
+    usize capacity;
+} Procs;
+// process END
+
+// fd START
 typedef i32 Fd;
 #define INVALID_FD -1
 
@@ -126,7 +135,9 @@ Fd fd_read(byte *path);
 Fd fd_write(byte *path);
 Fd fd_append(byte *path);
 void fd_close(Fd fd);
+// fd END
 
+// cmd START
 typedef struct {
     byte **items;
     usize count;
@@ -139,20 +150,6 @@ typedef struct {
     Fd fdin, fdout, fderr;
     b32 no_reset;
 } Cmd_Opt;
-
-typedef struct {
-    Procs *async;
-    u8 max_procs;
-    b32 no_reset;
-} Pipeline_Opt;
-
-typedef struct {
-    Fd last_read_fd;
-    Cmd cmd;
-    Cmd_Opt cmd_opt;
-    Pipeline_Opt p_opt;
-    b32 error;
-} Pipeline;
 
 #define cmd_append(cmd, ...)                    \
     da_append_many(cmd,                         \
@@ -169,6 +166,22 @@ typedef struct {
                     })
 b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
 b32 procs_flush(Procs *procs);
+// cmd END
+
+// pipeline START
+typedef struct {
+    Procs *async;
+    u8 max_procs;
+    b32 no_reset;
+} Pipeline_Opt;
+
+typedef struct {
+    Fd last_read_fd;
+    Cmd cmd;
+    Cmd_Opt cmd_opt;
+    Pipeline_Opt p_opt;
+    b32 error;
+} Pipeline;
 
 #define pipeline_chain(pipeline, cmd, ...)  \
         pipeline_chain_opt(pipeline, cmd,   \
@@ -183,8 +196,9 @@ b32 pipeline_end(Pipeline *p);
 #define pipeline(p, ...) \
     for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
                       latch; latch = 0, pipeline_end(p))
+// pipeline END
 
-
+// sb START
 typedef struct {
     byte *items;
     usize count;
@@ -202,6 +216,7 @@ typedef struct {
 
 #define sb_append_null(sb) da_append(sb, 0)
 #define sb_free(sb) DA_FREE((sb).items)
+// sb END
 
 #endif // PSH_CORE_INCLUDE
 
