@@ -1,6 +1,212 @@
 #ifndef PSH_CORE_INCLUDE
 #define PSH_CORE_INCLUDE
 
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stddef.h>
 
+typedef uint8_t     u8;
+typedef uint16_t    u16;
+typedef uint32_t    u32;
+typedef uint64_t    u64;
 
+typedef int8_t      i8;
+typedef int16_t     i16;
+typedef int32_t     i32;
+typedef int64_t     i64;
+
+typedef float       f32;
+typedef double      f64;
+
+typedef char        byte;
+typedef int32_t     b32;
+
+typedef uintptr_t   uptr;
+typedef ptrdiff_t   isize;
+typedef size_t      usize;
+
+#define true 1
+#define false 0
+
+#ifndef DA_ASSERT
+    #include <assert.h>
+#define DA_ASSERT assert
 #endif
+
+#ifndef DA_REALLOC
+    #include <stdlib.h>
+#define DA_REALLOC realloc
+#endif
+
+#ifndef DA_FREE
+    #include <stdlib.h>
+#define DA_FREE free
+#endif
+
+#define DA_INIT_CAP 256
+
+#define da_reserve(da, expected_capacity)                                                  \
+    do {                                                                                   \
+        if ((expected_capacity) > (da)->capacity) {                                        \
+            if ((da)->capacity == 0) {                                                     \
+                (da)->capacity = DA_INIT_CAP;                                              \
+            }                                                                              \
+            while ((expected_capacity) > (da)->capacity) {                                 \
+                (da)->capacity *= 2;                                                       \
+            }                                                                              \
+            (da)->items = DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
+            DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
+        }                                                                                  \
+    } while (0)
+
+// Append an item to a dynamic array
+#define da_append(da, item)                     \
+    do {                                        \
+        da_reserve((da), (da)->count + 1);      \
+        (da)->items[(da)->count++] = (item);    \
+    } while (0)
+
+#define da_free(da) DA_FREE((da).items)
+
+// Append several items to a dynamic array
+#define da_append_many(da, new_items, new_items_count)                                          \
+    do {                                                                                        \
+        da_reserve((da), (da)->count + (new_items_count));                                      \
+        memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
+        (da)->count += (new_items_count);                                                       \
+    } while (0)
+
+#define da_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+
+// May be used for cleanup
+#define da_resize(da, new_size)         \
+    do {                                \
+        da_reserve((da), new_size);     \
+        (da)->count = (new_size);       \
+    } while (0)
+
+#define da_last(da) (da)->items[(DA_ASSERT((da)->count > 0), (da)->count-1)]
+
+// Replace the element at given index with the last
+// element in the array and decrement the item count
+#define da_remove_unordered(da, i)                   \
+    do {                                             \
+        size_t j = (i);                              \
+        DA_ASSERT(0 <= j && j < (da)->count);        \
+        (da)->items[j] = (da)->items[--(da)->count]; \
+    } while(0)
+
+typedef i32 Proc;
+#define INVALID_PROC -1
+
+typedef struct {
+    Proc *items;
+    usize count;
+    usize capacity;
+} Procs;
+
+typedef enum {
+    INFO, 
+    WARNING,
+    ERROR,
+    NO_LOGS
+} Log_Level;
+
+void logger(Log_Level level, byte *fmt, ...);
+
+typedef i32 Fd;
+#define INVALID_FD -1
+
+Fd fd_open(byte *path, i32 mode, i32 permissions);
+Fd fd_read(byte *path);
+Fd fd_write(byte *path);
+Fd fd_append(byte *path);
+void fd_close(Fd fd);
+
+typedef struct {
+    byte **items;
+    usize count;
+    usize capacity;
+} Cmd;
+
+typedef struct {
+    Procs *async;
+    u8 max_procs;
+    Fd fdin, fdout, fderr;
+    b32 no_reset;
+} Cmd_Opt;
+
+typedef struct {
+    Procs *async;
+    u8 max_procs;
+    b32 no_reset;
+} Pipeline_Opt;
+
+typedef struct {
+    Fd last_read_fd;
+    Cmd cmd;
+    Cmd_Opt cmd_opt;
+    Pipeline_Opt p_opt;
+    b32 error;
+} Pipeline;
+
+#define cmd_append(cmd, ...)                    \
+    da_append_many(cmd,                         \
+        ((byte *[]){__VA_ARGS__}),              \
+        (sizeof((byte *[]){__VA_ARGS__}) / sizeof(byte *)))
+
+#define cmd_free(cmd) da_free(cmd)
+
+#define cmd_run(cmd, ...)   cmd_run_opt(cmd,    \
+            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
+                       .fdout = STDOUT_FILENO,  \
+                       .fderr = STDERR_FILENO,  \
+                       __VA_ARGS__              \
+                    })
+b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
+b32 procs_flush(Procs *procs);
+
+#define pipeline_chain(pipeline, cmd, ...)  \
+        pipeline_chain_opt(pipeline, cmd,   \
+            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
+                       .fdout = STDOUT_FILENO,  \
+                       .fderr = STDERR_FILENO,  \
+                       __VA_ARGS__              \
+                    })
+b32 pipeline_chain_opt(Pipeline *p, Cmd *cmd, Cmd_Opt opt);
+b32 pipeline_end(Pipeline *p);
+
+#define pipeline(p, ...) \
+    for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
+                      latch; latch = 0, pipeline_end(p))
+
+
+typedef struct {
+    byte *items;
+    usize count;
+    usize capacity;
+} String_Builder;
+
+#define sb_append(sb, c) da_append(sb, c)
+#define sb_append_buf(sb, buf, size) da_append_many(sb, buf, size)
+#define sb_append_cstr(sb, cstr)      \
+    do {                              \
+        byte *s = (cstr);       \
+        usize n = strlen(s);         \
+        da_append_many(sb, s, n); \
+    } while (0)
+
+#define sb_append_null(sb) da_append(sb, 0)
+#define sb_free(sb) DA_FREE((sb).items)
+
+#endif // PSH_CORE_INCLUDE
+
+
+#ifdef PSH_CORE_IMPL
+
+
+#endif // PSH_CORE_IMPL
