@@ -36,121 +36,121 @@ typedef size_t      usize;
 
 // da START
 
-#ifndef DA_ASSERT
+#ifndef PSH_DA_ASSERT
     #include <assert.h>
-#define DA_ASSERT assert
+#define PSH_DA_ASSERT assert
 #endif
 
-#ifndef DA_REALLOC
-    #define DA_REALLOC realloc
+#ifndef PSH_DA_REALLOC
+    #define PSH_DA_REALLOC realloc
 #endif
 
-#ifndef DA_FREE
-    #define DA_FREE free
+#ifndef PSH_DA_FREE
+    #define PSH_DA_FREE free
 #endif
 
-#define DA_INIT_CAP 256
+#define PSH_DA_INIT_CAP 256
 
-#define da_reserve(da, expected_capacity)                                                  \
+#define psh_da_reserve(da, expected_capacity)                                                  \
     do {                                                                                   \
         if ((expected_capacity) > (da)->capacity) {                                        \
             if ((da)->capacity == 0) {                                                     \
-                (da)->capacity = DA_INIT_CAP;                                              \
+                (da)->capacity = PSH_DA_INIT_CAP;                                              \
             }                                                                              \
             while ((expected_capacity) > (da)->capacity) {                                 \
                 (da)->capacity *= 2;                                                       \
             }                                                                              \
-            (da)->items = DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
-            DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
+            (da)->items = PSH_DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
+            PSH_DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
         }                                                                                  \
     } while (0)
 
 // Append an item to a dynamic array
-#define da_append(da, item)                     \
+#define psh_da_append(da, item)                     \
     do {                                        \
-        da_reserve((da), (da)->count + 1);      \
+        psh_da_reserve((da), (da)->count + 1);      \
         (da)->items[(da)->count++] = (item);    \
     } while (0)
 
-#define da_free(da) DA_FREE((da).items)
+#define psh_da_free(da) PSH_DA_FREE((da).items)
 
 // Append several items to a dynamic array
-#define da_append_many(da, new_items, new_items_count)                                          \
+#define psh_da_append_many(da, new_items, new_items_count)                                          \
     do {                                                                                        \
-        da_reserve((da), (da)->count + (new_items_count));                                      \
+        psh_da_reserve((da), (da)->count + (new_items_count));                                      \
         memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
         (da)->count += (new_items_count);                                                       \
     } while (0)
 
-#define da_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+#define psh_da_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
 
 // May be used for cleanup
-#define da_resize(da, new_size)         \
+#define psh_da_resize(da, new_size)         \
     do {                                \
-        da_reserve((da), new_size);     \
+        psh_da_reserve((da), new_size);     \
         (da)->count = (new_size);       \
     } while (0)
 
-#define da_last(da) (da)->items[(DA_ASSERT((da)->count > 0), (da)->count-1)]
+#define psh_da_last(da) (da)->items[(PSH_DA_ASSERT((da)->count > 0), (da)->count-1)]
 
 // Replace the element at given index with the last
 // element in the array and decrement the item count
-#define da_remove_unordered(da, i)                   \
+#define psh_da_remove_unordered(da, i)                   \
     do {                                             \
         usize j = (i);                               \
-        DA_ASSERT(0 <= j && j < (da)->count);        \
+        PSH_DA_ASSERT(0 <= j && j < (da)->count);        \
         (da)->items[j] = (da)->items[--(da)->count]; \
     } while(0)
 // da END
 
 // macros START
 
-#define return_defer(value) do { result = (value); goto defer; } while(0)
+#define psh_return_defer(value) do { result = (value); goto defer; } while(0)
 
-#define UNREACHABLE(message)                            \
+#define PSH_UNREACHABLE(message)                            \
     do {                                                \
         fprintf(stderr, "%s:%d: UNREACHABLE: %s\n",     \
                 __FILE__, __LINE__, message);           \
         abort();                                        \
     } while(0)
 
-#define UNUSED(value) (void) value
+#define PSH_UNUSED(value) (void) value
 // macros END
 
-// logger START
+// psh_logger START
 
 typedef enum {
-    INFO, 
-    WARNING,
-    ERROR,
-    NO_LOGS
-} Log_Level;
+    PSH_INFO, 
+    PSH_WARNING,
+    PSH_ERROR,
+    PSH_NO_LOGS
+} Psh_Log_Level;
 
-void logger(Log_Level level, byte *fmt, ...);
-// logger END
+void psh_logger(Psh_Log_Level level, byte *fmt, ...);
+// psh_logger END
 
 // process START
 
-typedef i32 Proc;
+typedef i32 Psh_Proc;
 #define INVALID_PROC -1
 
 typedef struct {
-    Proc *items;
+    Psh_Proc *items;
     usize count;
     usize capacity;
-} Procs;
+} Psh_Procs;
 // process END
 
 // fd START
 
-typedef i32 Fd;
+typedef i32 Psh_Fd;
 #define INVALID_FD -1
 
-Fd fd_open(byte *path, i32 mode, i32 permissions);
-Fd fd_read(byte *path);
-Fd fd_write(byte *path);
-Fd fd_append(byte *path);
-void fd_close(Fd fd);
+Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions);
+Psh_Fd psh_fd_read(byte *path);
+Psh_Fd psh_fd_write(byte *path);
+Psh_Fd psh_fd_append(byte *path);
+void psh_fd_close(Psh_Fd fd);
 // fd END
 
 // cmd START
@@ -159,61 +159,61 @@ typedef struct {
     byte **items;
     usize count;
     usize capacity;
-} Cmd;
+} Psh_Cmd;
 
 typedef struct {
-    Procs *async;
+    Psh_Procs *async;
     u8 max_procs;
-    Fd fdin, fdout, fderr;
+    Psh_Fd fdin, fdout, fderr;
     b32 no_reset;
-} Cmd_Opt;
+} Psh_Cmd_Opt;
 
-#define cmd_append(cmd, ...)                    \
-    da_append_many(cmd,                         \
+#define psh_cmd_append(cmd, ...)                    \
+    psh_da_append_many(cmd,                         \
         ((byte *[]){__VA_ARGS__}),              \
         (sizeof((byte *[]){__VA_ARGS__}) / sizeof(byte *)))
 
-#define cmd_free(cmd) da_free(cmd)
+#define psh_cmd_free(cmd) PSH_DA_FREE(cmd)
 
-#define cmd_run(cmd, ...)   cmd_run_opt(cmd,    \
-            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
-                       .fdout = STDOUT_FILENO,  \
-                       .fderr = STDERR_FILENO,  \
-                       __VA_ARGS__              \
+#define psh_cmd_run(cmd, ...)   psh_cmd_run_opt(cmd,    \
+            (Psh_Cmd_Opt) {.fdin = STDIN_FILENO,        \
+                       .fdout = STDOUT_FILENO,          \
+                       .fderr = STDERR_FILENO,          \
+                       __VA_ARGS__                      \
                     })
-b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt);
-b32 procs_flush(Procs *procs);
+b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt);
+b32 psh_procs_flush(Psh_Procs *procs);
 // cmd END
 
 // pipeline START
 
 typedef struct {
-    Procs *async;
+    Psh_Procs *async;
     u8 max_procs;
     b32 no_reset;
-} Pipeline_Opt;
+} Psh_Pipeline_Opt;
 
 typedef struct {
-    Fd last_read_fd;
-    Cmd cmd;
-    Cmd_Opt cmd_opt;
-    Pipeline_Opt p_opt;
+    Psh_Fd last_read_fd;
+    Psh_Cmd cmd;
+    Psh_Cmd_Opt cmd_opt;
+    Psh_Pipeline_Opt p_opt;
     b32 error;
-} Pipeline;
+} Psh_Pipeline;
 
-#define pipeline_chain(pipeline, cmd, ...)  \
-        pipeline_chain_opt(pipeline, cmd,   \
-            (Cmd_Opt) {.fdin = STDIN_FILENO,    \
+#define psh_pipeline_chain(pipeline, cmd, ...)  \
+        psh_pipeline_chain_opt(pipeline, cmd,   \
+            (Psh_Cmd_Opt) {.fdin = STDIN_FILENO,    \
                        .fdout = STDOUT_FILENO,  \
                        .fderr = STDERR_FILENO,  \
                        __VA_ARGS__              \
                     })
-b32 pipeline_chain_opt(Pipeline *p, Cmd *cmd, Cmd_Opt opt);
-b32 pipeline_end(Pipeline *p);
+b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *cmd, Psh_Cmd_Opt opt);
+b32 psh_pipeline_end(Psh_Pipeline *p);
 
-#define pipeline(p, ...) \
-    for (i32 latch = ((p)->p_opt = (Pipeline_Opt) {__VA_ARGS__}, 1); \
-                      latch; latch = 0, pipeline_end(p))
+#define psh_pipeline(p, ...) \
+    for (i32 psh_latch = ((p)->p_opt = (Psh_Pipeline_Opt) {__VA_ARGS__}, 1); \
+                      psh_latch; psh_latch = 0, psh_pipeline_end(p))
 // pipeline END
 
 // sb START
@@ -222,19 +222,19 @@ typedef struct {
     byte *items;
     usize count;
     usize capacity;
-} String_Builder;
+} Psh_String_Builder;
 
-#define sb_append(sb, c) da_append(sb, c)
-#define sb_append_buf(sb, buf, size) da_append_many(sb, buf, size)
-#define sb_append_cstr(sb, cstr)      \
+#define psh_sb_append(sb, c) psh_da_append(sb, c)
+#define psh_sb_append_buf(sb, buf, size) psh_da_append_many(sb, buf, size)
+#define psh_sb_append_cstr(sb, cstr)      \
     do {                              \
         byte *s = (cstr);       \
         usize n = strlen(s);         \
-        da_append_many(sb, s, n); \
+        psh_da_append_many(sb, s, n); \
     } while (0)
 
-#define sb_append_null(sb) da_append(sb, 0)
-#define sb_free(sb) DA_FREE((sb).items)
+#define psh_sb_append_null(sb) psh_da_append(sb, 0)
+#define psh_sb_free(sb) psh_da_free(sb)
 // sb END
 
 #endif // PSH_CORE_INCLUDE
@@ -246,23 +246,23 @@ typedef struct {
 #include <fcntl.h>
 #include <time.h>
 
-// logger impl START
+// psh_logger impl START
 
-void logger(Log_Level level, byte *fmt, ...)
+void psh_logger(Psh_Log_Level level, byte *fmt, ...)
 {
     switch (level) {
-        case INFO:
-            fprintf(stderr, "[INFO] ");
+        case PSH_INFO:
+            fprintf(stderr, "[PSH_INFO] ");
             break;
-        case WARNING:
-            fprintf(stderr, "[WARNING] ");
+        case PSH_WARNING:
+            fprintf(stderr, "[PSH_WARNING] ");
             break;
-        case ERROR:
-            fprintf(stderr, "[ERROR] ");
+        case PSH_ERROR:
+            fprintf(stderr, "[PSH_ERROR] ");
             break;
-        case NO_LOGS: return;
+        case PSH_NO_LOGS: return;
         default:
-            UNREACHABLE("logger");
+            PSH_UNREACHABLE("psh_logger");
     }
 
     va_list args;
@@ -271,158 +271,158 @@ void logger(Log_Level level, byte *fmt, ...)
     va_end(args);
     fprintf(stderr, "\n");
 }
-// logger impl END
+// psh_logger impl END
 
 // fd impl START
 
-Fd fd_open(byte *path, i32 mode, i32 permissions) {
-    Fd result = open(path, mode, permissions);
+Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions) {
+    Psh_Fd result = open(path, mode, permissions);
     if (result < 0) {
-        logger(ERROR, "Could not open file %s: %s", path, strerror(errno));
+        psh_logger(PSH_ERROR, "Could not open file %s: %s", path, strerror(errno));
         return INVALID_FD;
     }
     return result;
 }
 
-Fd fd_read(byte *path) {
-    return fd_open(path, O_RDONLY, 0);
+Psh_Fd psh_fd_read(byte *path) {
+    return psh_fd_open(path, O_RDONLY, 0);
 }
 
-Fd fd_write(byte *path) {
-    return fd_open(path, 
+Psh_Fd psh_fd_write(byte *path) {
+    return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_TRUNC,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-Fd fd_append(byte *path) {
-    return fd_open(path, 
+Psh_Fd psh_fd_append(byte *path) {
+    return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_APPEND,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-void fd_close(Fd fd) {
+void psh_fd_close(Psh_Fd fd) {
     close(fd);
 }
 // fd IMPL END
 
 // cmd IMPL START
 
-static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr);
-static inline b32 _block_unwanted_procs(Procs *async, u8 max_procs);
-static inline void _setup_child_io(Fd fdin, Fd fdout, Fd fderr);
-static inline b32 _proc_wait(Proc pid);
-static inline i32 _proc_wait_async(Proc pid);
-static inline b32 _procs_wait(Procs procs);
-static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb);
-static inline i32 _nprocs(void);
+static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr);
+static inline b32 psh__block_unwanted_procs(Psh_Procs *async, u8 max_procs);
+static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr);
+static inline b32 psh__proc_wait(Psh_Proc pid);
+static inline i32 psh__proc_wait_async(Psh_Proc pid);
+static inline b32 psh__procs_wait(Psh_Procs procs);
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_String_Builder *sb);
+static inline i32 psh__nprocs(void);
 
-b32 cmd_run_opt(Cmd *cmd, Cmd_Opt opt) {
+b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     b32 result = true;
 
-    if (opt.fdin == INVALID_FD)  return_defer(false);
-    if (opt.fdout == INVALID_FD) return_defer(false);
-    if (opt.fderr == INVALID_FD) return_defer(false);
+    if (opt.fdin == INVALID_FD)  psh_return_defer(false);
+    if (opt.fdout == INVALID_FD) psh_return_defer(false);
+    if (opt.fderr == INVALID_FD) psh_return_defer(false);
 
-    u8 max_procs = opt.max_procs > 0 ? opt.max_procs : _nprocs() + 1;
+    u8 max_procs = opt.max_procs > 0 ? opt.max_procs : psh__nprocs() + 1;
     if (opt.async) {
-        if (!_block_unwanted_procs(opt.async, max_procs)) return_defer(false);
+        if (!psh__block_unwanted_procs(opt.async, max_procs)) psh_return_defer(false);
     }
 
-    Proc pid = _cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
+    Psh_Proc pid = psh__cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
 
-    if (pid == INVALID_PROC) return_defer(false);
+    if (pid == INVALID_PROC) psh_return_defer(false);
 
     if (opt.async) {
-        da_append(opt.async, pid);
+        psh_da_append(opt.async, pid);
     } else {
-        result = _proc_wait(pid);
+        result = psh__proc_wait(pid);
     }
 
 defer:
-    if (opt.fdin > STDERR_FILENO)  fd_close(opt.fdin);
-    if (opt.fdout > STDERR_FILENO) fd_close(opt.fdout);
-    if (opt.fderr > STDERR_FILENO) fd_close(opt.fderr);
+    if (opt.fdin > STDERR_FILENO)  psh_fd_close(opt.fdin);
+    if (opt.fdout > STDERR_FILENO) psh_fd_close(opt.fdout);
+    if (opt.fderr > STDERR_FILENO) psh_fd_close(opt.fderr);
 
-    if (!opt.no_reset) da_resize(cmd, 0);
+    if (!opt.no_reset) psh_da_resize(cmd, 0);
 
     return result;
 }
 
-b32 procs_flush(Procs *procs) {
-    b32 result = _procs_wait(*procs);
+b32 psh_procs_flush(Psh_Procs *procs) {
+    b32 result = psh__procs_wait(*procs);
     procs->count = 0;
     return result;
 }
 
-static inline Proc _cmd_start_proc(Cmd cmd, Fd fdin, Fd fdout, Fd fderr) {
+static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr) {
     
     if (cmd.count < 1) {
-        logger(ERROR, "Cannot run an empty command");
+        psh_logger(PSH_ERROR, "Cannot run an empty command");
         return INVALID_PROC;
     }
 
 #ifndef NO_ECHO
-    String_Builder sb = {0};
-    _cmd_build_cstr(cmd, &sb);
-    logger(INFO, "CMD: %s", sb.items);
-    sb_free(sb);
+    Psh_String_Builder sb = {0};
+    psh__cmd_build_cstr(cmd, &sb);
+    psh_logger(PSH_INFO, "CMD: %s", sb.items);
+    psh_sb_free(sb);
 #endif
 
-    Proc cpid = fork();
+    Psh_Proc cpid = fork();
     if (cpid < 0) {
-        logger(ERROR, "Could not fork for child process %s", strerror(errno));
+        psh_logger(PSH_ERROR, "Could not fork for child process %s", strerror(errno));
         return INVALID_PROC;
     }
 
     if (cpid == 0) {
-        _setup_child_io(fdin, fdout, fderr);
+        psh__setup_child_io(fdin, fdout, fderr);
 
-        cmd_append(&cmd, NULL);
+        psh_cmd_append(&cmd, NULL);
         execvp(cmd.items[0], cmd.items);
 
-        logger(ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
+        psh_logger(PSH_ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
         exit(EXIT_FAILURE);
 
-        UNREACHABLE("_cmd_start_proc");
+        PSH_UNREACHABLE("psh__cmd_start_proc");
     }
 
     return cpid;
 }
 
-static inline void _setup_child_io(Fd fdin, Fd fdout, Fd fderr) {
-    // logger(INFO, "Fds: %d, %d, %d", fdin, fdout, fderr);
+static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr) {
+    // psh_logger(PSH_INFO, "Psh_Fds: %d, %d, %d", fdin, fdout, fderr);
     if (fdin != INVALID_FD) {
         if (dup2(fdin, STDIN_FILENO) < 0) {
-            logger(ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
+            psh_logger(PSH_ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
     if (fdout != INVALID_FD) {
         if (dup2(fdout, STDOUT_FILENO) < 0) {
-            logger(ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
+            psh_logger(PSH_ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 
     if (fderr != INVALID_FD) {
         if (dup2(fderr, STDERR_FILENO) < 0) {
-            logger(ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
+            psh_logger(PSH_ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
 }
 
-static inline b32 _block_unwanted_procs(Procs *async, u8 max_procs) {
+static inline b32 psh__block_unwanted_procs(Psh_Procs *async, u8 max_procs) {
     // while loop blocks until the allowed
     // amount of procs is left running
     while (async->count >= max_procs) {
         for (usize i = 0; i < async->count; ) {
-            i32 ret = _proc_wait_async(async->items[i]);
+            i32 ret = psh__proc_wait_async(async->items[i]);
             if (ret < 0) 
                 return false;
             if (ret) {
-                da_remove_unordered(async, i);
+                psh_da_remove_unordered(async, i);
             } else {
                 ++i;
             }
@@ -431,7 +431,7 @@ static inline b32 _block_unwanted_procs(Procs *async, u8 max_procs) {
     return true;
 }
 
-static inline b32 _proc_wait(Proc pid) {
+static inline b32 psh__proc_wait(Psh_Proc pid) {
     i32 wstatus;
 
     for (;;) {
@@ -439,7 +439,7 @@ static inline b32 _proc_wait(Proc pid) {
             // Interrupted by signal, retry waitpid
             if (errno == EINTR) continue;
 
-            logger(ERROR, "could not wait on command (pid %d): %s", pid, strerror(errno));
+            psh_logger(PSH_ERROR, "could not wait on command (pid %d): %s", pid, strerror(errno));
             return false;
         }
 
@@ -449,32 +449,32 @@ static inline b32 _proc_wait(Proc pid) {
     if (WIFEXITED(wstatus)) {
         i32 exit_status = WEXITSTATUS(wstatus);
         if (exit_status != EXIT_SUCCESS) 
-            logger(ERROR, "command exited with exit code %d", exit_status);
+            psh_logger(PSH_ERROR, "command exited with exit code %d", exit_status);
         return exit_status == EXIT_SUCCESS;
     }
 
     if (WIFSIGNALED(wstatus)) {
-        logger(ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
+        psh_logger(PSH_ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
         return false;
     }
 
     if (WIFSTOPPED(wstatus)) {
-        logger(ERROR, "command process was stopped by signal %d", WSTOPSIG(wstatus));
+        psh_logger(PSH_ERROR, "command process was stopped by signal %d", WSTOPSIG(wstatus));
         return false;
     }
 
-    UNREACHABLE("_proc_wait");
+    PSH_UNREACHABLE("psh__proc_wait");
 }
 
-static inline i32 _proc_wait_async(Proc pid) {
+static inline i32 psh__proc_wait_async(Psh_Proc pid) {
     i32 wstatus;
 
-    Proc ret = waitpid(pid, &wstatus, WUNTRACED | WNOHANG);
+    Psh_Proc ret = waitpid(pid, &wstatus, WUNTRACED | WNOHANG);
     if (ret < 0) {
         // Interrupted by signal, will be retried later 
         if (errno == EINTR) 
             return 0;
-        logger(ERROR, "could not wait on command (pid %d): %s", pid, strerror(errno));
+        psh_logger(PSH_ERROR, "could not wait on command (pid %d): %s", pid, strerror(errno));
         return -1;
     }
 
@@ -495,7 +495,7 @@ static inline i32 _proc_wait_async(Proc pid) {
     if (WIFEXITED(wstatus)) {
         i32 exit_status = WEXITSTATUS(wstatus);
         if (exit_status != EXIT_SUCCESS) {
-            logger(ERROR, "command exited with exit code %d", exit_status);
+            psh_logger(PSH_ERROR, "command exited with exit code %d", exit_status);
             return -1;
         }
 
@@ -503,65 +503,66 @@ static inline i32 _proc_wait_async(Proc pid) {
     }
 
     if (WIFSIGNALED(wstatus)) {
-        logger(ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
+        psh_logger(PSH_ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
         return -1;
     }
 
     if (WIFSTOPPED(wstatus)) {
-        logger(ERROR, "command process was stopped by signal %d", WSTOPSIG(wstatus));
+        psh_logger(PSH_ERROR, "command process was stopped by signal %d", WSTOPSIG(wstatus));
         return -1;
     }
 
-    UNREACHABLE("_proc_wait_async");
+    PSH_UNREACHABLE("psh__proc_wait_async");
 }
 
-static inline b32 _procs_wait(Procs procs) {
+static inline b32 psh__procs_wait(Psh_Procs procs) {
     b32 result = true;
     for (usize i = 0; i < procs.count; ++i) {
-        result = _proc_wait(procs.items[i]);
+        result = psh__proc_wait(procs.items[i]);
     }
     return result;
 }
 
-static inline void _cmd_build_cstr(Cmd cmd, String_Builder *sb) {
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_String_Builder *sb) {
     for (usize i = 0; i < cmd.count; ++i) {
         byte *arg = cmd.items[i];
         if (arg == NULL) return;
-        if (i > 0) sb_append(sb, ' ');
-        sb_append_cstr(sb, arg);
+        if (i > 0) psh_sb_append(sb, ' ');
+        psh_sb_append_cstr(sb, arg);
     }
-    sb_append_null(sb);
+    psh_sb_append_null(sb);
 }
 
-static inline i32 _nprocs(void) {
+static inline i32 psh__nprocs(void) {
     return sysconf(_SC_NPROCESSORS_ONLN);
 }
 // cmd IMPL END
 
 // pipeline IMPL START
 
-static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt, Fd pipe_fdin, Fd pipe_fdout);
+static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_opt, 
+    Psh_Pipeline_Opt pipe_opt, Psh_Fd pipe_fdin, Psh_Fd pipe_fdout);
 
-b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
+b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cmd_opt) {
     if (p->error) return false;
 
     // Execute previous cmd
     if (p->cmd.count != 0) {
-        Fd fds[2];
+        Psh_Fd fds[2];
         if (pipe(fds) < 0) {
             p->error = true;
-            logger(ERROR, "Could not create pipes %s", strerror(errno));
-            if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
+            psh_logger(PSH_ERROR, "Could not create pipes %s", strerror(errno));
+            if (p->last_read_fd > STDERR_FILENO) psh_fd_close(p->last_read_fd);
             return false;
         }
 
-        _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, fds[STDOUT_FILENO]);
+        psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, fds[STDOUT_FILENO]);
         // closes all fds passed to it
-        b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
+        b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
         if (!ok) {
             p->error = true;
-            fd_close(fds[STDIN_FILENO]);
+            psh_fd_close(fds[STDIN_FILENO]);
             return false;
         }
 
@@ -569,32 +570,32 @@ b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
     }
 
     p->cmd_opt = new_cmd_opt;
-    p->cmd = (Cmd) {0};
-    da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
+    p->cmd = (Psh_Cmd) {0};
+    psh_da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
 
     if (!p->p_opt.no_reset) new_cmd->count = 0;
 
     return true;
 }
 
-b32 pipeline_end(Pipeline *p) {
+b32 psh_pipeline_end(Psh_Pipeline *p) {
     if (p->error) return false;
 
-    _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
-    b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
+    psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
+    b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
-    *p = (Pipeline) {0};
+    *p = (Psh_Pipeline) {0};
     return ok;
 }
 
-static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt,
-                                       Fd pipe_fdin, Fd pipe_fdout) {
+static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_opt, Psh_Pipeline_Opt pipe_opt,
+                                           Psh_Fd pipe_fdin, Psh_Fd pipe_fdout) {
     // If prev_opt has non-default settings it means 
     // the user has opened a file for redirection. 
     // Close the fds from pipes and leave user fds.
     if (prev_opt->fdin != STDIN_FILENO) {
         if (pipe_fdin != STDIN_FILENO)
-            fd_close(pipe_fdin);
+            psh_fd_close(pipe_fdin);
     } else {
         // Otherwise setup pipe fds
         prev_opt->fdin = pipe_fdin;
@@ -602,7 +603,7 @@ static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt,
 
     if (prev_opt->fdout != STDOUT_FILENO) {
         if (pipe_fdout != STDOUT_FILENO)
-            fd_close(pipe_fdout);
+            psh_fd_close(pipe_fdout);
     } else {
         prev_opt->fdout = pipe_fdout;
     }
