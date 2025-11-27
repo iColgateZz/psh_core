@@ -3,8 +3,6 @@
 
 #include "da.h"
 #include "types.h"
-#include "proc.h"
-#include "fd.h"
 #include <unistd.h>
 
 typedef struct {

@@ -1,8 +1,7 @@
 #include "types.h"
-#include "cmd.h"
 #include <stdio.h>
-#include "proc.h"
-#include "fd.h"
+#define PSH_CORE_IMPL
+    #include "psh_core.h"
 
 i32 main(void) {
     Cmd cmd = {0};
