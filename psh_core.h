@@ -6,8 +6,8 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
 
 // Data types START
 typedef uint8_t     u8;
@@ -42,12 +42,12 @@ typedef size_t      usize;
 
 #ifndef DA_REALLOC
     #include <stdlib.h>
-#define DA_REALLOC realloc
+    #define DA_REALLOC realloc
 #endif
 
 #ifndef DA_FREE
     #include <stdlib.h>
-#define DA_FREE free
+    #define DA_FREE free
 #endif
 
 #define DA_INIT_CAP 256
@@ -103,6 +103,19 @@ typedef size_t      usize;
         (da)->items[j] = (da)->items[--(da)->count]; \
     } while(0)
 // da END
+
+// macros START
+#define return_defer(value) do { result = (value); goto defer; } while(0)
+
+#define UNREACHABLE(message)                            \
+    do {                                                \
+        fprintf(stderr, "%s:%d: UNREACHABLE: %s\n",     \
+                __FILE__, __LINE__, message);           \
+        abort();                                        \
+    } while(0)
+
+#define UNUSED(value) (void) value
+// macros END
 
 // logger START
 typedef enum {
@@ -220,8 +233,34 @@ typedef struct {
 
 #endif // PSH_CORE_INCLUDE
 
-
+#define PSH_CORE_IMPL
 #ifdef PSH_CORE_IMPL
+
+#include <stdarg.h>
+
+void logger(Log_Level level, byte *fmt, ...)
+{
+    switch (level) {
+        case INFO:
+            fprintf(stderr, "[INFO] ");
+            break;
+        case WARNING:
+            fprintf(stderr, "[WARNING] ");
+            break;
+        case ERROR:
+            fprintf(stderr, "[ERROR] ");
+            break;
+        case NO_LOGS: return;
+        default:
+            UNREACHABLE("logger");
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+}
 
 
 #endif // PSH_CORE_IMPL
