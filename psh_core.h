@@ -239,7 +239,6 @@ typedef struct {
 
 #endif // PSH_CORE_INCLUDE
 
-#define PSH_CORE_IMPL
 #ifdef PSH_CORE_IMPL
 
 #include <stdarg.h>
@@ -539,5 +538,79 @@ static inline i32 _nprocs(void) {
 }
 // cmd IMPL END
 
+// pipeline IMPL START
+
+static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt, Fd pipe_fdin, Fd pipe_fdout);
+
+b32 pipeline_chain_opt(Pipeline *p, Cmd *new_cmd, Cmd_Opt new_cmd_opt) {
+    if (p->error) return false;
+
+    // Execute previous cmd
+    if (p->cmd.count != 0) {
+        Fd fds[2];
+        if (pipe(fds) < 0) {
+            p->error = true;
+            logger(ERROR, "Could not create pipes %s", strerror(errno));
+            if (p->last_read_fd > STDERR_FILENO) fd_close(p->last_read_fd);
+            return false;
+        }
+
+        _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, fds[STDOUT_FILENO]);
+        // closes all fds passed to it
+        b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
+
+        if (!ok) {
+            p->error = true;
+            fd_close(fds[STDIN_FILENO]);
+            return false;
+        }
+
+        p->last_read_fd = fds[STDIN_FILENO];
+    }
+
+    p->cmd_opt = new_cmd_opt;
+    p->cmd = (Cmd) {0};
+    da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
+
+    if (!p->p_opt.no_reset) new_cmd->count = 0;
+
+    return true;
+}
+
+b32 pipeline_end(Pipeline *p) {
+    if (p->error) return false;
+
+    _pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
+    b32 ok = cmd_run_opt(&p->cmd, p->cmd_opt);
+
+    *p = (Pipeline) {0};
+    return ok;
+}
+
+static inline void _pipeline_setup_opt(Cmd_Opt *prev_opt, Pipeline_Opt pipe_opt,
+                                       Fd pipe_fdin, Fd pipe_fdout) {
+    // If prev_opt has non-default settings it means 
+    // the user has opened a file for redirection. 
+    // Close the fds from pipes and leave user fds.
+    if (prev_opt->fdin != STDIN_FILENO) {
+        if (pipe_fdin != STDIN_FILENO)
+            fd_close(pipe_fdin);
+    } else {
+        // Otherwise setup pipe fds
+        prev_opt->fdin = pipe_fdin;
+    }
+
+    if (prev_opt->fdout != STDOUT_FILENO) {
+        if (pipe_fdout != STDOUT_FILENO)
+            fd_close(pipe_fdout);
+    } else {
+        prev_opt->fdout = pipe_fdout;
+    }
+    
+    prev_opt->async = pipe_opt.async;
+    prev_opt->max_procs = pipe_opt.max_procs;
+}
+
+// pipeline IMPL END
 
 #endif // PSH_CORE_IMPL
