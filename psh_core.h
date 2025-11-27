@@ -8,6 +8,7 @@
 #include <stdlib.h>
 
 // Data types START
+
 typedef uint8_t     u8;
 typedef uint16_t    u16;
 typedef uint32_t    u32;
@@ -33,6 +34,7 @@ typedef size_t      usize;
 // Data types END
 
 // da START
+
 #ifndef DA_ASSERT
     #include <assert.h>
 #define DA_ASSERT assert
@@ -101,6 +103,7 @@ typedef size_t      usize;
 // da END
 
 // macros START
+
 #define return_defer(value) do { result = (value); goto defer; } while(0)
 
 #define UNREACHABLE(message)                            \
@@ -114,6 +117,7 @@ typedef size_t      usize;
 // macros END
 
 // logger START
+
 typedef enum {
     INFO, 
     WARNING,
@@ -125,6 +129,7 @@ void logger(Log_Level level, byte *fmt, ...);
 // logger END
 
 // process START
+
 typedef i32 Proc;
 #define INVALID_PROC -1
 
@@ -136,6 +141,7 @@ typedef struct {
 // process END
 
 // fd START
+
 typedef i32 Fd;
 #define INVALID_FD -1
 
@@ -147,6 +153,7 @@ void fd_close(Fd fd);
 // fd END
 
 // cmd START
+
 typedef struct {
     byte **items;
     usize count;
@@ -178,6 +185,7 @@ b32 procs_flush(Procs *procs);
 // cmd END
 
 // pipeline START
+
 typedef struct {
     Procs *async;
     u8 max_procs;
@@ -208,6 +216,7 @@ b32 pipeline_end(Pipeline *p);
 // pipeline END
 
 // sb START
+
 typedef struct {
     byte *items;
     usize count;
@@ -238,6 +247,7 @@ typedef struct {
 #include <fcntl.h>
 
 // logger impl START
+
 void logger(Log_Level level, byte *fmt, ...)
 {
     switch (level) {
