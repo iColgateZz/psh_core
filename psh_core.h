@@ -361,7 +361,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
         return PSH_INVALID_PROC;
     }
 
-#ifndef NO_ECHO
+#ifndef PSH_NO_ECHO
     Psh_String_Builder sb = {0};
     psh__cmd_build_cstr(cmd, &sb);
     psh_logger(PSH_INFO, "CMD: %s", sb.items);
