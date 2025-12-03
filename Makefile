@@ -1,4 +1,4 @@
-CFLAGS=-Wall -Wextra -O2 -Iinclude -Wno-initializer-overrides
+CFLAGS=-Wall -Wextra -O2 -Wno-initializer-overrides
 CC=gcc
 
 SRC := $(shell find . -name "*.c")
