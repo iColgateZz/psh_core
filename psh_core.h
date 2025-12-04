@@ -182,7 +182,7 @@ typedef struct {
                        __VA_ARGS__                      \
                     })
 b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt);
-b32 psh_procs_flush(Psh_Procs *procs);
+b32 psh_procs_block(Psh_Procs *procs);
 // cmd END
 
 // pipeline START
@@ -348,7 +348,7 @@ defer:
     return result;
 }
 
-b32 psh_procs_flush(Psh_Procs *procs) {
+b32 psh_procs_block(Psh_Procs *procs) {
     b32 result = psh__procs_wait(*procs);
     procs->count = 0;
     return result;
@@ -656,7 +656,7 @@ typedef Psh_Cmd_Opt         Cmd_Opt;
 #define cmd_free            psh_cmd_free
 #define cmd_run             psh_cmd_run
 #define cmd_run_opt         psh_cmd_run_opt
-#define procs_flush         psh_procs_flush
+#define procs_block         psh_procs_block
 
 typedef Psh_Pipeline_Opt    Pipeline_Opt;
 typedef Psh_Pipeline        Pipeline;

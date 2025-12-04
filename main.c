@@ -27,7 +27,7 @@ i32 main(void) {
     } if (p.error) return 1;
 
     printf("pipeline is async!\n");
-    if (!procs_flush(&procs)) return 1;
+    if (!procs_block(&procs)) return 1;
 
     return 0;
 }
