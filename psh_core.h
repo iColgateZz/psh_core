@@ -252,13 +252,13 @@ void psh_logger(Psh_Log_Level level, byte *fmt, ...)
 {
     switch (level) {
         case PSH_INFO:
-            fprintf(stderr, "[PSH_INFO] ");
+            fprintf(stderr, "[INFO] ");
             break;
         case PSH_WARNING:
-            fprintf(stderr, "[PSH_WARNING] ");
+            fprintf(stderr, "[WARNING] ");
             break;
         case PSH_ERROR:
-            fprintf(stderr, "[PSH_ERROR] ");
+            fprintf(stderr, "[ERROR] ");
             break;
         case PSH_NO_LOGS: return;
         default:
@@ -370,7 +370,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
 
     Psh_Proc cpid = fork();
     if (cpid < 0) {
-        psh_logger(PSH_ERROR, "Could not fork for child process %s", strerror(errno));
+        psh_logger(PSH_ERROR, "Could not fork a child process: %s", strerror(errno));
         return PSH_INVALID_PROC;
     }
 
@@ -380,7 +380,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
         psh_cmd_append(&cmd, NULL);
         execvp(cmd.items[0], cmd.items);
 
-        psh_logger(PSH_ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
+        psh_logger(PSH_ERROR, "Could not exec in child process for '%s': %s", cmd.items[0], strerror(errno));
         exit(EXIT_FAILURE);
 
         PSH_UNREACHABLE("psh__cmd_start_proc");
