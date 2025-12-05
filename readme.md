@@ -43,6 +43,8 @@ Psh_Cmd cmd = {0};
 ```
 - Append arguments:  
 ```c
+// Note: The library automatically adds 
+// the NULL terminator required by execvp.
 psh_cmd_append(&cmd, "grep", "foo");
 ```
 - Run synchronously (blocks until command completion):
@@ -50,21 +52,26 @@ psh_cmd_append(&cmd, "grep", "foo");
 if (!psh_cmd_run(&cmd)) { 
     /* handle error */
 }
+// Running psh_cmd_run resets the cmd struct
+// unless the 'no_reset' option is used. 
+// You can safely reuse cmd for other commands
 ```
 - Or run asynchronously using a `Psh_Procs` dynamic array:
 ```c
 Psh_Procs procs = {0};
+Psh_Cmd cmd1 = {0};
+// Declare and fill other cmds...
 
-// launch several
+// launch several commands asynchronously
 psh_cmd_run(&cmd1, .async = &procs);
 psh_cmd_run(&cmd2, .async = &procs);
 psh_cmd_run(&cmd3, .async = &procs);
 
-// the pids of spawned processes are
+// the PIDs of spawned processes are
 // stored in the procs array
 
 // later block until all commands 
-// finish running
+// in the array finish running
 if (!psh_procs_block(&procs)) {
     /* handle error */
 }
@@ -73,8 +80,8 @@ if (!psh_procs_block(&procs)) {
 Options for `psh_cmd_run`:
 - `Psh_Fd`: `.fdin`, `.fdout`, `.fderr` — redirect standard IO streams, read more about `Psh_Fd` in the File Descriptors section
 - `Psh_Procs *`: `.async`        —  used for non-blocking launch  
-- `uint8_t`: `.max_procs`    — limit the amount of concurrent async processes  
-- `bool`: `.no_reset`     — do not reset the size of given `Psh_Cmd` after running a command
+- `uint8_t`: `.max_procs`    — limit the amount of concurrent async processes. Default is system core count + 1
+- `b32`: `.no_reset` — if `true`, the `Psh_Cmd` struct's arguments will *not* be cleared after running the command, allowing for easy reuse with its current arguments. Default is `false`.
 
 ## Pipelines
 
@@ -102,22 +109,21 @@ Each command in the pipeline is executed immediately, not at the end of the pipe
 
 Options for `psh_pipeline`:  
 - `Psh_Procs *`: `.async` - non-blocking launch of pipeline
-- `uint8_t`: `.max_procs` - limit the amount of concurrent async processes  
-- `bool`: `.no_reset`     — do not reset the sizes of `Psh_Cmd`-s in the pipeline
+- `uint8_t`: `.max_procs` - limit the amount of concurrent async processes in the pipeline. Default is system core count + 1
+- `b32`: `.no_reset` — if `true`, the `Psh_Cmd` struct's arguments will *not* be cleared after each stage, allowing its arguments to persist. Default is `false`.
 
-`pipeline_chain` chain accepts the same options `psh_cmd_run` accepts. This way each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call override the corresponding properties of each command launched in the pipeline.
+`pipeline_chain` accepts the same options as `psh_cmd_run`. This way, each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call **override** any corresponding properties set via `psh_pipeline_chain` for individual commands within that pipeline.
 
 
 ## File Descriptors
 
-Convenience functions to open/close fds:
-- `Psh_Fd psh_fd_read(char *path)`  
-- `Psh_Fd psh_fd_write(char *path)`
-- `Psh_Fd psh_fd_append(char *path)`
-- `Psh_Fd psh_fd_open(char *path, int mode, int permissions)`  
-- `void   psh_fd_close(Psh_Fd fd)`  
-
-All functions besides `psh_fd_close` can fail. In that case they return `PSH_INVALID_FD` and log the error.
+Convenience functions to open/close file descriptors:
+- `Psh_Fd psh_fd_open(char *path, int mode, int permissions)`: Opens a file with specified mode and permissions.
+- `Psh_Fd psh_fd_read(char *path)`: Opens a file for reading (`O_RDONLY`).
+- `Psh_Fd psh_fd_write(char *path)`: Opens a file for writing, creates if not exists, truncates if exists (`O_WRONLY | O_CREAT | O_TRUNC`).
+- `Psh_Fd psh_fd_append(char *path)`: Opens a file for appending, creates if not exists (`O_WRONLY | O_CREAT | O_APPEND`).
+- `void psh_fd_close(Psh_Fd fd)`: Closes a file descriptor.  
+`psh_fd_open`, `psh_fd_read`, `psh_fd_write`, and `psh_fd_append` functions can fail. In that case, they return `PSH_INVALID_FD` and log the error using `psh_logger(PSH_ERROR, ...)`.
 
 
 ## Logging
@@ -132,13 +138,13 @@ psh_logger(PSH_ERROR,   "Failed to open config: %s", strerror(errno));
 
 ## Customization via Macros
 
-Define `PSH_NO_LOGS` before including the library to disable non-error logging.  
-Define `PSH_CORE_NO_PREFIX` to expose a shorter, un-prefixed API (e.g. `cmd_run` instead of `psh_cmd_run`).
+- Define `PSH_NO_ECHO` before including the library to disable the `CMD: ...` output that `psh_cmd_run` prints to `stderr`.
+- Define `PSH_CORE_NO_PREFIX` to expose a shorter, un-prefixed API (e.g. `cmd_run` instead of `psh_cmd_run`, `logger` instead of `psh_logger`).
 
 ## Future Enhancements
 
 - Improved pipeline control (background jobs, join/kill)  
-- More flags for behaviour control
+- More flags for behaviour control and fine-tuning
 
 ## License
 

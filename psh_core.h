@@ -173,7 +173,7 @@ typedef struct {
         ((byte *[]){__VA_ARGS__}),              \
         (sizeof((byte *[]){__VA_ARGS__}) / sizeof(byte *)))
 
-#define psh_cmd_free(cmd) PSH_DA_FREE(cmd)
+#define psh_cmd_free(cmd) PSH_DA_FREE(cmd.items)
 
 #define psh_cmd_run(cmd, ...)   psh_cmd_run_opt(cmd,    \
             (Psh_Cmd_Opt) {.fdin = STDIN_FILENO,        \
