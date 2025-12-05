@@ -116,9 +116,9 @@ Options for `psh_pipeline(Psh_Pipeline *, ...)`:
 
 ## Resource Management
 
-All non-standard file descriptors passed to functions described above will be closed.  
+All file descriptors passed to functions like `psh_cmd_run` or zpsh_pipeline_chain` that are *not* `STDIN_FILENO`, `STDOUT_FILENO`, or `STDERR_FILENO` will be closed by the library after use.  
 
-`Psh_Cmd` and `Psh_Procs` are dynamic arrays that use heap memory by default. For proper resource management in larger programs, you should free them using `psh_da_free`. In smaller programs / scripts like the ones above, returning from `main` means that the OS serves us as the *garbage collector*.
+`Psh_Cmd` and `Psh_Procs` are dynamic arrays that use heap memory by default. For proper resource management, especially in long-running applications or loops, you should free their allocated memory using `psh_da_free`. In smaller programs or scripts that exit quickly (like the examples above), the operating system will reclaim all process resources automatically upon termination, effectively serving as a "garbage collector".
 
 
 ## File Descriptors
@@ -147,7 +147,7 @@ psh_logger(PSH_ERROR,   "Failed to open config: %s", strerror(errno));
 
 - Define `PSH_NO_ECHO` before including the library to disable the `CMD: ...` output that `psh_cmd_run` prints to `stderr`.
 - Define `PSH_CORE_NO_PREFIX` to expose a shorter, un-prefixed API (e.g. `cmd_run` instead of `psh_cmd_run`, `logger` instead of `psh_logger`).
-- Define `PSH_DA_REALLOC` and `PSH_DA_FREE` if you want to use a custom allocator for dynamic arrays.
+- Define `PSH_DA_REALLOC` and `PSH_DA_FREE` if you want to use a custom allocator for dynamic arrays, overriding the default `realloc` and `free`.
 
 ## Future Enhancements
 
