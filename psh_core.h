@@ -173,8 +173,6 @@ typedef struct {
         ((byte *[]){__VA_ARGS__}),              \
         (sizeof((byte *[]){__VA_ARGS__}) / sizeof(byte *)))
 
-#define psh_cmd_free(cmd) PSH_DA_FREE(cmd.items)
-
 #define psh_cmd_run(cmd, ...)   psh_cmd_run_opt(cmd,    \
             (Psh_Cmd_Opt) {.fdin = STDIN_FILENO,        \
                        .fdout = STDOUT_FILENO,          \
@@ -234,7 +232,6 @@ typedef struct {
     } while (0)
 
 #define psh_sb_append_null(sb) psh_da_append(sb, 0)
-#define psh_sb_free(sb) psh_da_free(sb)
 // sb END
 
 #endif // PSH_CORE_INCLUDE
@@ -365,7 +362,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     Psh_String_Builder sb = {0};
     psh__cmd_build_cstr(cmd, &sb);
     psh_logger(PSH_INFO, "CMD: %s", sb.items);
-    psh_sb_free(sb);
+    psh_da_free(sb);
 #endif
 
     Psh_Proc cpid = fork();
@@ -584,6 +581,7 @@ b32 psh_pipeline_end(Psh_Pipeline *p) {
     psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
     b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
+    psh_da_free(p->cmd);
     *p = (Psh_Pipeline) {0};
     return ok;
 }
@@ -653,7 +651,6 @@ typedef Psh_Fd              Fd;
 typedef Psh_Cmd             Cmd;
 typedef Psh_Cmd_Opt         Cmd_Opt;
 #define cmd_append          psh_cmd_append
-#define cmd_free            psh_cmd_free
 #define cmd_run             psh_cmd_run
 #define cmd_run_opt         psh_cmd_run_opt
 #define procs_block         psh_procs_block
@@ -670,6 +667,5 @@ typedef Psh_String_Builder  String_Builder;
 #define sb_append_buf       psh_sb_append_buf
 #define sb_append_cstr      psh_sb_append_cstr
 #define sb_append_null      psh_sb_append_null
-#define sb_free             psh_sb_free
 
 #endif // PSH_CORE_NO_PREFIX

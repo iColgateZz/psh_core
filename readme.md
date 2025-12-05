@@ -77,7 +77,7 @@ if (!psh_procs_block(&procs)) {
 }
 ```
 
-Options for `psh_cmd_run`:
+Options for `psh_cmd_run(Psh_Cmd *, ...)`:
 - `Psh_Fd`: `.fdin`, `.fdout`, `.fderr` — redirect standard IO streams, read more about `Psh_Fd` in the File Descriptors section
 - `Psh_Procs *`: `.async`        —  used for non-blocking launch  
 - `uint8_t`: `.max_procs`    — limit the amount of concurrent async processes. Default is system core count + 1
@@ -105,14 +105,20 @@ psh_pipeline(&p) {
     // handle error
 }
 ```
-Each command in the pipeline is executed immediately, not at the end of the pipeline scope, when all commands are known.
+Each command in the pipeline is executed immediately, not at the end of the pipeline scope when all commands are known.
 
-Options for `psh_pipeline`:  
+Options for `psh_pipeline(Psh_Pipeline *, ...)`:  
 - `Psh_Procs *`: `.async` - non-blocking launch of pipeline
 - `uint8_t`: `.max_procs` - limit the amount of concurrent async processes in the pipeline. Default is system core count + 1
 - `b32`: `.no_reset` — if `true`, the `Psh_Cmd` struct's arguments will *not* be cleared after each stage, allowing its arguments to persist. Default is `false`.
 
-`pipeline_chain` accepts the same options as `psh_cmd_run`. This way, each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call **override** any corresponding properties set via `psh_pipeline_chain` for individual commands within that pipeline.
+`psh_pipeline_chain(Psh_Pipeline *, Psh_Cmd *, ...)` accepts the same options as `psh_cmd_run`. This way, each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call **override** any corresponding properties set via `psh_pipeline_chain` for individual commands within that pipeline.
+
+## Resource Management
+
+All non-standard file descriptors passed to functions described above will be closed.  
+
+`Psh_Cmd` and `Psh_Procs` are dynamic arrays that use heap memory by default. For proper resource management in larger programs, you should free them using `psh_da_free`. In smaller programs / scripts like the ones above, returning from `main` means that the OS serves us as the *garbage collector*.
 
 
 ## File Descriptors
@@ -122,7 +128,8 @@ Convenience functions to open/close file descriptors:
 - `Psh_Fd psh_fd_read(char *path)`: Opens a file for reading (`O_RDONLY`).
 - `Psh_Fd psh_fd_write(char *path)`: Opens a file for writing, creates if not exists, truncates if exists (`O_WRONLY | O_CREAT | O_TRUNC`).
 - `Psh_Fd psh_fd_append(char *path)`: Opens a file for appending, creates if not exists (`O_WRONLY | O_CREAT | O_APPEND`).
-- `void psh_fd_close(Psh_Fd fd)`: Closes a file descriptor.  
+- `void psh_fd_close(Psh_Fd fd)`: Closes a file descriptor.    
+
 `psh_fd_open`, `psh_fd_read`, `psh_fd_write`, and `psh_fd_append` functions can fail. In that case, they return `PSH_INVALID_FD` and log the error using `psh_logger(PSH_ERROR, ...)`.
 
 
@@ -140,6 +147,7 @@ psh_logger(PSH_ERROR,   "Failed to open config: %s", strerror(errno));
 
 - Define `PSH_NO_ECHO` before including the library to disable the `CMD: ...` output that `psh_cmd_run` prints to `stderr`.
 - Define `PSH_CORE_NO_PREFIX` to expose a shorter, un-prefixed API (e.g. `cmd_run` instead of `psh_cmd_run`, `logger` instead of `psh_logger`).
+- Define `PSH_DA_REALLOC` and `PSH_DA_FREE` if you want to use a custom allocator for dynamic arrays.
 
 ## Future Enhancements
 
