@@ -108,17 +108,20 @@ Options for `psh_pipeline`:
 `pipeline_chain` chain accepts the same options `psh_cmd_run` accepts. This way each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call override the corresponding properties of each command launched in the pipeline.
 
 
-File Descriptors
-----------------
-Convenience functions to open/close fds:
-- `Psh_Fd psh_fd_read(path)`  
-- `Psh_Fd psh_fd_write(path)` (truncate/create)  
-- `Psh_Fd psh_fd_append(path)`  
-- `void   psh_fd_close(fd)`  
-All report errors via `psh_logger(PSH_ERROR,…)` and return `PSH_INVALID_FD` on failure.
+## File Descriptors
 
-Logging
--------
+Convenience functions to open/close fds:
+- `Psh_Fd psh_fd_read(char *path)`  
+- `Psh_Fd psh_fd_write(char *path)`
+- `Psh_Fd psh_fd_append(char *path)`
+- `Psh_Fd psh_fd_open(char *path, int mode, int permissions)`  
+- `void   psh_fd_close(Psh_Fd fd)`  
+
+All functions besides `psh_fd_close` can fail. In that case they return `PSH_INVALID_FD` and log the error.
+
+
+## Logging
+
 Use `psh_logger(level, fmt, ...)` to emit messages:
 - Levels: `PSH_INFO`, `PSH_WARNING`, `PSH_ERROR`, `PSH_NO_LOGS`.  
 - Example:
@@ -127,15 +130,16 @@ psh_logger(PSH_INFO,    "Starting backup process");
 psh_logger(PSH_ERROR,   "Failed to open config: %s", strerror(errno));
 ```
 
-Customization & Prefix-less API
--------------------------------
-Define `PSH_NO_LOGS` before including to disable all logging.  
+## Customization via Macros
+
+Define `PSH_NO_LOGS` before including the library to disable non-error logging.  
 Define `PSH_CORE_NO_PREFIX` to expose a shorter, un-prefixed API (e.g. `cmd_run` instead of `psh_cmd_run`).
 
-Future Enhancements
--------------------
-- Improved pipeline control (background jobs, join/kill)  
+## Future Enhancements
 
-License
--------
+- Improved pipeline control (background jobs, join/kill)  
+- More flags for behaviour control
+
+## License
+
 MIT License. See `LICENSE` for details.
