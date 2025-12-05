@@ -116,7 +116,7 @@ Options for `psh_pipeline(Psh_Pipeline *, ...)`:
 
 ## Resource Management
 
-All file descriptors passed to functions like `psh_cmd_run` or zpsh_pipeline_chain` that are *not* `STDIN_FILENO`, `STDOUT_FILENO`, or `STDERR_FILENO` will be closed by the library after use.  
+All file descriptors passed to functions like `psh_cmd_run` or `psh_pipeline_chain` that are *not* `STDIN_FILENO`, `STDOUT_FILENO`, or `STDERR_FILENO` will be closed by the library after use.  
 
 `Psh_Cmd` and `Psh_Procs` are dynamic arrays that use heap memory by default. For proper resource management, especially in long-running applications or loops, you should free their allocated memory using `psh_da_free`. In smaller programs or scripts that exit quickly (like the examples above), the operating system will reclaim all process resources automatically upon termination, effectively serving as a "garbage collector".
 
