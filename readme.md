@@ -37,7 +37,6 @@ And you’re ready to go. Compile and run the `ls -l` process!
 
 ## Running Commands
 
-A command `Psh_Cmd` is just a dynamic array of `char *` args:  
 - Declare a `Psh_Cmd` struct:  
 ```c
 Psh_Cmd cmd = {0};
@@ -57,9 +56,9 @@ if (!psh_cmd_run(&cmd)) {
 Psh_Procs procs = {0};
 
 // launch several
-psh_cmd_run(&cmd, .async = &procs);
-psh_cmd_run(&cmd, .async = &procs);
-psh_cmd_run(&cmd, .async = &procs);
+psh_cmd_run(&cmd1, .async = &procs);
+psh_cmd_run(&cmd2, .async = &procs);
+psh_cmd_run(&cmd3, .async = &procs);
 
 // the pids of spawned processes are
 // stored in the procs array
@@ -72,33 +71,42 @@ if (!psh_procs_block(&procs)) {
 ```
 
 Options for `psh_cmd_run`:
-- `.fdin`, `.fdout`, `.fderr` — type: `Psh_Fd` (`int`), redirect standard IO streams, read more about `Psh_Fd` in the File Descriptors section
-- `.async`        — type: `Psh_Procs *`, used for non-blocking launch  
-- `.max_procs`    — type: `uint8_t`, limit the amount of concurrent async processes  
-- `.no_reset`     — type: `1 or 0` ,do not reset the size of given `Psh_Cmd` after running a command
+- `Psh_Fd`: `.fdin`, `.fdout`, `.fderr` — redirect standard IO streams, read more about `Psh_Fd` in the File Descriptors section
+- `Psh_Procs *`: `.async`        —  used for non-blocking launch  
+- `uint8_t`: `.max_procs`    — limit the amount of concurrent async processes  
+- `bool`: `.no_reset`     — do not reset the size of given `Psh_Cmd` after running a command
 
 ## Pipelines
 
-Chain multiple commands with UNIX-style pipes:
+- Declare a `Psh_Pipeline` struct:  
 ```c
-Pipeline p = {0};
-for (int _ = (p.p_opt = (Psh_Pipeline_Opt){ .async=NULL, .max_procs=0, .no_reset=false },1);
-     _; _ = 0, psh_pipeline_end(&p))
-{
-    // echo "foo\nbar" | grep f | sort
-    psh_pipeline_chain(&p, &echo_cmd, .fdout=STDOUT_FILENO);
-    psh_pipeline_chain(&p, &grep_cmd, .fdout=STDOUT_FILENO);
-    psh_pipeline_chain(&p, &sort_cmd, .fdout=STDOUT_FILENO);
+Psh_Pipeline p = {0};
+```
+- Set up and run a pipeline:
+```c
+psh_pipeline(&p) {
+    // Chain commands
+    psh_cmd_append(&cmd, "echo", "foo\nbar\nbaz");
+    psh_pipeline_chain(&p, &cmd);
+
+    psh_cmd_append(&cmd, "grep", "b");
+    psh_pipeline_chain(&p, &cmd);
+
+    psh_cmd_append(&cmd, "sort");
+    psh_pipeline_chain(&p, &cmd);
+} if (p.error) {
+    // handle error
 }
 ```
-Or simply:
-```c
-psh_pipeline(&p, .async=&procs);
-   pipeline_chain(&p, &cmd1);
-   pipeline_chain(&p, &cmd2);
-   pipeline_chain(&p, &cmd3);
-```
-When the loop ends, `psh_pipeline_end(&p)` runs the final stage and cleans up. Pipe fds and redirects are handled automatically.
+Each command in the pipeline is executed immediately, not at the end of the pipeline scope, when all commands are known.
+
+Options for `psh_pipeline`:  
+- `Psh_Procs *`: `.async` - non-blocking launch of pipeline
+- `uint8_t`: `.max_procs` - limit the amount of concurrent async processes  
+- `bool`: `.no_reset`     — do not reset the sizes of `Psh_Cmd`-s in the pipeline
+
+`pipeline_chain` chain accepts the same options `psh_cmd_run` accepts. This way each command in the pipeline can be customized. However, `.async`, `.max_procs`, and `.no_reset` properties set in the `psh_pipeline` call override the corresponding properties of each command launched in the pipeline.
+
 
 File Descriptors
 ----------------
