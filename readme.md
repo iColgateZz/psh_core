@@ -1,4 +1,8 @@
-# Psh Core: A Lightweight Library for Running Commands and Pipelines  in C
+<div align="center">
+  <h1>Psh Core</h1>
+  <p><em>A Lightweight Library for Running Commands and Pipelines  in C</em></p>
+</div>
+
 
 ## Introduction
 
