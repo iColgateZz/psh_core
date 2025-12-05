@@ -1,4 +1,4 @@
-# Psh Core: A Lightweight Library for Spawning Processes and Pipelines  in C
+# Psh Core: A Lightweight Library for Running Commands and Pipelines  in C
 
 ## Introduction
 
@@ -15,7 +15,7 @@ Psh Core is a minimal, single-header C library for:
 #define PSH_CORE_IMPL
 #include "psh_core.h"
 ```
-In other files where you need the api, you can simply do:
+In other files where you need the API, you can simply do:
 ```c
 #include "psh_core.h"
 ```
@@ -33,11 +33,11 @@ int main(void) {
 }
 ```
 
-And you’re ready to go. Compile and run the `ls -l` process! There are no other dependencies besides the C standard library and UNIX system calls.
+And you’re ready to go. Compile and run the `ls -l` process!
 
 ## Running Commands
 
-A command `Psh_Cmd` is just a resizable array of `char *` args:  
+A command `Psh_Cmd` is just a dynamic array of `char *` args:  
 - Declare a `Psh_Cmd` struct:  
 ```c
 Psh_Cmd cmd = {0};
@@ -46,13 +46,13 @@ Psh_Cmd cmd = {0};
 ```c
 psh_cmd_append(&cmd, "grep", "foo");
 ```
-- Run synchronously (blocks until process completion):
+- Run synchronously (blocks until command completion):
 ```c
 if (!psh_cmd_run(&cmd)) { 
     /* handle error */
 }
 ```
-- Or run asynchronously using a `Psh_Procs` list:
+- Or run asynchronously using a `Psh_Procs` dynamic array:
 ```c
 Psh_Procs procs = {0};
 
@@ -64,20 +64,21 @@ psh_cmd_run(&cmd, .async = &procs);
 // the pids of spawned processes are
 // stored in the procs array
 
-// later block until all processes finish
+// later block until all commands 
+// finish running
 if (!psh_procs_block(&procs)) {
     /* handle error */
 }
 ```
 
 Options for `psh_cmd_run`:
-- `.fdin`, `.fdout`, `.fderr` — type: Psh_Fd (int), redirect standard streams  
-- `.async`        — type: pointer to `Psh_Procs`, used for non-blocking launch  
-- `.max_procs`    — type: uint8_t, limit the amount of concurrent async processes  
-- `no_reset`     — leave args in `cmd` after run  
+- `.fdin`, `.fdout`, `.fderr` — type: `Psh_Fd` (`int`), redirect standard IO streams, read more about `Psh_Fd` in the File Descriptors section
+- `.async`        — type: `Psh_Procs *`, used for non-blocking launch  
+- `.max_procs`    — type: `uint8_t`, limit the amount of concurrent async processes  
+- `.no_reset`     — type: `1 or 0` ,do not reset the size of given `Psh_Cmd` after running a command
 
-Pipelines
----------
+## Pipelines
+
 Chain multiple commands with UNIX-style pipes:
 ```c
 Pipeline p = {0};
