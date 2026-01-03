@@ -34,12 +34,15 @@ typedef size_t      usize;
 #define false 0
 // Data types END
 
-// da START
+// assert START
 
-#ifndef PSH_DA_ASSERT
+#ifndef PSH_ASSERT
     #include <assert.h>
-#define PSH_DA_ASSERT assert
+#define PSH_ASSERT assert
 #endif
+// assert END
+
+// da START
 
 #ifndef PSH_DA_REALLOC
     #define PSH_DA_REALLOC realloc
@@ -61,7 +64,7 @@ typedef size_t      usize;
                 (da)->capacity *= 2;                                                       \
             }                                                                              \
             (da)->items = PSH_DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
-            PSH_DA_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
+            PSH_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
         }                                                                                  \
     } while (0)
 
@@ -91,14 +94,14 @@ typedef size_t      usize;
         (da)->count = (new_size);       \
     } while (0)
 
-#define psh_da_last(da) (da)->items[(PSH_DA_ASSERT((da)->count > 0), (da)->count-1)]
+#define psh_da_last(da) (da)->items[(PSH_ASSERT((da)->count > 0), (da)->count-1)]
 
 // Replace the element at given index with the last
 // element in the array and decrement the item count
 #define psh_da_remove_unordered(da, i)                   \
     do {                                             \
         usize j = (i);                               \
-        PSH_DA_ASSERT(0 <= j && j < (da)->count);        \
+        PSH_ASSERT(0 <= j && j < (da)->count);        \
         (da)->items[j] = (da)->items[--(da)->count]; \
     } while(0)
 // da END
