@@ -150,10 +150,12 @@ typedef i32 Psh_Fd;
 #define PSH_INVALID_FD -1
 
 Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions);
-Psh_Fd psh_fd_read(byte *path);
-Psh_Fd psh_fd_write(byte *path);
-Psh_Fd psh_fd_append(byte *path);
+Psh_Fd psh_fd_oread(byte *path);
+Psh_Fd psh_fd_owrite(byte *path);
+Psh_Fd psh_fd_oappend(byte *path);
 void psh_fd_close(Psh_Fd fd);
+void psh_fd_close_safe(Psh_Fd fd);
+b32 psh_fd_not_default(Psh_Fd fd);
 // fd END
 
 // cmd START
@@ -168,7 +170,6 @@ typedef struct {
     Psh_Procs *async;
     u8 max_procs;
     Psh_Fd fdin, fdout, fderr;
-    b32 no_reset;
 } Psh_Cmd_Opt;
 
 #define psh_cmd_append(cmd, ...)                    \
@@ -191,11 +192,10 @@ b32 psh_procs_block(Psh_Procs *procs);
 typedef struct {
     Psh_Procs *async;
     u8 max_procs;
-    b32 no_reset;
 } Psh_Pipeline_Opt;
 
 typedef struct {
-    Psh_Fd last_read_fd;
+    Psh_Fd prev_read_fd;
     Psh_Cmd cmd;
     Psh_Cmd_Opt cmd_opt;
     Psh_Pipeline_Opt p_opt;
@@ -216,6 +216,17 @@ b32 psh_pipeline_end(Psh_Pipeline *p);
     for (i32 psh_latch = ((p)->p_opt = (Psh_Pipeline_Opt) {__VA_ARGS__}, 1); \
                       psh_latch; psh_latch = 0, psh_pipeline_end(p))
 // pipeline END
+
+// pipe START
+
+typedef struct {
+    Psh_Fd read_fd;
+    Psh_Fd write_fd;
+} Psh_Unix_Pipe;
+
+b32 psh_open_pipe(Psh_Unix_Pipe *pipe);
+b32 psh_read_fd(Psh_String_Builder *sb);
+// pipe END
 
 // sb START
 
@@ -284,17 +295,17 @@ Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions) {
     return result;
 }
 
-Psh_Fd psh_fd_read(byte *path) {
+Psh_Fd psh_fd_oread(byte *path) {
     return psh_fd_open(path, O_RDONLY, 0);
 }
 
-Psh_Fd psh_fd_write(byte *path) {
+Psh_Fd psh_fd_owrite(byte *path) {
     return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_TRUNC,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-Psh_Fd psh_fd_append(byte *path) {
+Psh_Fd psh_fd_oappend(byte *path) {
     return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_APPEND,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -302,6 +313,15 @@ Psh_Fd psh_fd_append(byte *path) {
 
 void psh_fd_close(Psh_Fd fd) {
     close(fd);
+}
+
+void psh_fd_close_safe(Psh_Fd fd) {
+    if (psh_fd_not_default(fd))
+        psh_fd_close(fd);
+}
+
+b32 psh_fd_not_default(Psh_Fd fd) {
+    return fd > STDERR_FILENO;
 }
 // fd IMPL END
 
@@ -319,7 +339,7 @@ static inline i32 psh__nprocs(void);
 b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     b32 result = true;
 
-    if (opt.fdin == PSH_INVALID_FD)  psh_return_defer(false);
+    if (opt.fdin  == PSH_INVALID_FD) psh_return_defer(false);
     if (opt.fdout == PSH_INVALID_FD) psh_return_defer(false);
     if (opt.fderr == PSH_INVALID_FD) psh_return_defer(false);
 
@@ -339,11 +359,11 @@ b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     }
 
 defer:
-    if (opt.fdin > STDERR_FILENO)  psh_fd_close(opt.fdin);
-    if (opt.fdout > STDERR_FILENO) psh_fd_close(opt.fdout);
-    if (opt.fderr > STDERR_FILENO) psh_fd_close(opt.fderr);
+    psh_fd_close_safe(opt.fdin);
+    psh_fd_close_safe(opt.fdout);
+    psh_fd_close_safe(opt.fderr);
 
-    if (!opt.no_reset) psh_da_resize(cmd, 0);
+    cmd->count = 0;
 
     return result;
 }
@@ -552,11 +572,11 @@ b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cm
         if (pipe(fds) < 0) {
             p->error = true;
             psh_logger(PSH_ERROR, "Could not create pipes %s", strerror(errno));
-            if (p->last_read_fd > STDERR_FILENO) psh_fd_close(p->last_read_fd);
+            psh_fd_close_safe(p->prev_read_fd);
             return false;
         }
 
-        psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, fds[STDOUT_FILENO]);
+        psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->prev_read_fd, fds[STDOUT_FILENO]);
         // closes all fds passed to it
         b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
@@ -566,14 +586,14 @@ b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cm
             return false;
         }
 
-        p->last_read_fd = fds[STDIN_FILENO];
+        p->prev_read_fd = fds[STDIN_FILENO];
     }
 
     p->cmd_opt = new_cmd_opt;
     p->cmd = (Psh_Cmd) {0};
     psh_da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
 
-    if (!p->p_opt.no_reset) new_cmd->count = 0;
+    new_cmd->count = 0;
 
     return true;
 }
@@ -581,7 +601,7 @@ b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cm
 b32 psh_pipeline_end(Psh_Pipeline *p) {
     if (p->error) return false;
 
-    psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->last_read_fd, STDOUT_FILENO);
+    psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->prev_read_fd, STDOUT_FILENO);
     b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
     psh_da_free(p->cmd);
@@ -589,22 +609,24 @@ b32 psh_pipeline_end(Psh_Pipeline *p) {
     return ok;
 }
 
-static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_opt, Psh_Pipeline_Opt pipe_opt,
-                                           Psh_Fd pipe_fdin, Psh_Fd pipe_fdout) {
+static inline void psh__pipeline_setup_opt(
+    Psh_Cmd_Opt *prev_opt,
+    Psh_Pipeline_Opt pipe_opt,
+    Psh_Fd pipe_fdin,
+    Psh_Fd pipe_fdout
+) {
     // If prev_opt has non-default settings it means 
     // the user has opened a file for redirection. 
     // Close the fds from pipes and leave user fds.
-    if (prev_opt->fdin != STDIN_FILENO) {
-        if (pipe_fdin != STDIN_FILENO)
-            psh_fd_close(pipe_fdin);
+    if (psh_fd_not_default(prev_opt->fdin)) {
+        psh_fd_close_safe(pipe_fdin);
     } else {
-        // Otherwise setup pipe fds
+        // Otherwise continue with pipe fds
         prev_opt->fdin = pipe_fdin;
     }
 
-    if (prev_opt->fdout != STDOUT_FILENO) {
-        if (pipe_fdout != STDOUT_FILENO)
-            psh_fd_close(pipe_fdout);
+    if (psh_fd_not_default(prev_opt->fdout)) {
+        psh_fd_close_safe(pipe_fdout);
     } else {
         prev_opt->fdout = pipe_fdout;
     }
@@ -646,10 +668,12 @@ typedef Psh_Procs           Procs;
 typedef Psh_Fd              Fd;
 #define INVALID_FD          PSH_INVALID_FD
 #define fd_open             psh_fd_open
-#define fd_read             psh_fd_read
-#define fd_write            psh_fd_write
-#define fd_append           psh_fd_append
+#define fd_oread            psh_fd_oread
+#define fd_owrite           psh_fd_owrite
+#define fd_oappend          psh_fd_oappend
 #define fd_close            psh_fd_close
+#define fd_close_safe       psh_fd_close_safe
+#define fd_not_default      psh_fd_not_default
 
 typedef Psh_Cmd             Cmd;
 typedef Psh_Cmd_Opt         Cmd_Opt;
