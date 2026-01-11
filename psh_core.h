@@ -660,6 +660,7 @@ b32 psh_fd_read(Psh_Fd fd, Psh_SB *sb) {
     while ((n = read(fd, buffer, sizeof buffer)) > 0)
         psh_sb_append_buf(sb, buffer, n);
 
+    psh_fd_close_safe(fd);
     if (n == 0) return true;
 
     psh_logger(PSH_ERROR, "Could not read fd(%d): %s", fd, strerror(errno));
@@ -721,6 +722,7 @@ typedef Psh_Pipeline        Pipeline;
 #define pipeline            psh_pipeline
 
 #define pipe_open           psh_pipe_open
+typedef Psh_Unix_Pipe       Unix_Pipe;
 #define fd_read             psh_fd_read
 
 typedef Psh_String_Builder  String_Builder;
