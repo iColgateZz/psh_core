@@ -15,7 +15,7 @@ i32 main(void) {
         pipeline_chain(&p, &cmd);
 
         cmd_append(&cmd, "xxd");
-        pipeline_chain(&p, &cmd, .fdin = fd_read("test.sh"), .fdout = fd_write("file.txt"));
+        pipeline_chain(&p, &cmd, .fdin = fd_oread("test.sh"), .fdout = fd_owrite("file.txt"));
     } if (p.error) return 1;
 
     pipeline(&p, .async = &procs) {
@@ -28,6 +28,9 @@ i32 main(void) {
 
     printf("pipeline is async!\n");
     if (!procs_block(&procs)) return 1;
+
+    cmd_append(&cmd, "rm", "file.txt");
+    if (!cmd_run(&cmd)) return 1;
 
     return 0;
 }

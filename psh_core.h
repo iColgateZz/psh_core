@@ -246,8 +246,8 @@ typedef struct {
     Psh_Fd write_fd;
 } Psh_Unix_Pipe;
 
-b32 psh_open_pipe(Psh_Unix_Pipe *upipe);
-b32 psh_read_fd(Psh_Fd fd, Psh_SB *sb);
+b32 psh_pipe_open(Psh_Unix_Pipe *upipe);
+b32 psh_fd_read(Psh_Fd fd, Psh_SB *sb);
 // pipe END
 
 #endif // PSH_CORE_INCLUDE
@@ -351,7 +351,6 @@ b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     }
 
     Psh_Proc pid = psh__cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
-
     if (pid == PSH_INVALID_PROC) psh_return_defer(false);
 
     if (opt.async) {
@@ -641,7 +640,7 @@ static inline void psh__pipeline_setup_opt(
 
 // pipe IMPL START
 
-b32 psh_open_pipe(Psh_Unix_Pipe *upipe) {
+b32 psh_pipe_open(Psh_Unix_Pipe *upipe) {
     Psh_Fd fds[2];
     if (pipe(fds) < 0) {
         psh_logger(PSH_ERROR, "Could not create pipes: %s", strerror(errno));
@@ -654,7 +653,7 @@ b32 psh_open_pipe(Psh_Unix_Pipe *upipe) {
     return true;
 }
 
-b32 psh_read_fd(Psh_Fd fd, Psh_SB *sb) {
+b32 psh_fd_read(Psh_Fd fd, Psh_SB *sb) {
     isize n;
     byte buffer[1024];
 
@@ -721,8 +720,8 @@ typedef Psh_Pipeline        Pipeline;
 #define pipeline_end        psh_pipeline_end
 #define pipeline            psh_pipeline
 
-#define open_pipe           psh_open_pipe
-#define read_fd             psh_read_fd
+#define pipe_open           psh_pipe_open
+#define fd_read             psh_fd_read
 
 typedef Psh_String_Builder  String_Builder;
 typedef Psh_SB              SB;
