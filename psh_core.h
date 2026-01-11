@@ -217,17 +217,6 @@ b32 psh_pipeline_end(Psh_Pipeline *p);
                       psh_latch; psh_latch = 0, psh_pipeline_end(p))
 // pipeline END
 
-// pipe START
-
-typedef struct {
-    Psh_Fd read_fd;
-    Psh_Fd write_fd;
-} Psh_Unix_Pipe;
-
-b32 psh_open_pipe(Psh_Unix_Pipe *pipe);
-b32 psh_read_fd(Psh_String_Builder *sb);
-// pipe END
-
 // sb START
 
 typedef struct {
@@ -247,6 +236,19 @@ typedef struct {
 
 #define psh_sb_append_null(sb) psh_da_append(sb, 0)
 // sb END
+
+typedef Psh_String_Builder Psh_SB;
+
+// pipe START
+
+typedef struct {
+    Psh_Fd read_fd;
+    Psh_Fd write_fd;
+} Psh_Unix_Pipe;
+
+b32 psh_open_pipe(Psh_Unix_Pipe *upipe);
+b32 psh_read_fd(Psh_Fd fd, Psh_SB *sb);
+// pipe END
 
 #endif // PSH_CORE_INCLUDE
 
@@ -333,7 +335,7 @@ static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr);
 static inline b32 psh__proc_wait(Psh_Proc pid);
 static inline i32 psh__proc_wait_async(Psh_Proc pid);
 static inline b32 psh__procs_wait(Psh_Procs procs);
-static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_String_Builder *sb);
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_SB *sb);
 static inline i32 psh__nprocs(void);
 
 b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
@@ -382,7 +384,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     }
 
 #ifndef PSH_NO_ECHO
-    Psh_String_Builder sb = {0};
+    Psh_SB sb = {0};
     psh__cmd_build_cstr(cmd, &sb);
     psh_logger(PSH_INFO, "CMD: %s", sb.items);
     psh_da_free(sb);
@@ -543,7 +545,7 @@ static inline b32 psh__procs_wait(Psh_Procs procs) {
     return result;
 }
 
-static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_String_Builder *sb) {
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_SB *sb) {
     for (usize i = 0; i < cmd.count; ++i) {
         byte *arg = cmd.items[i];
         if (arg == NULL) return;
@@ -577,7 +579,7 @@ b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cm
         }
 
         psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->prev_read_fd, fds[STDOUT_FILENO]);
-        // closes all fds passed to it
+        // closes all non-default fds passed to it
         b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
         if (!ok) {
@@ -630,12 +632,42 @@ static inline void psh__pipeline_setup_opt(
     } else {
         prev_opt->fdout = pipe_fdout;
     }
-    
+
     prev_opt->async = pipe_opt.async;
     prev_opt->max_procs = pipe_opt.max_procs;
 }
 
 // pipeline IMPL END
+
+// pipe IMPL START
+
+b32 psh_open_pipe(Psh_Unix_Pipe *upipe) {
+    Psh_Fd fds[2];
+    if (pipe(fds) < 0) {
+        psh_logger(PSH_ERROR, "Could not create pipes: %s", strerror(errno));
+        return false;
+    }
+
+    upipe->read_fd = fds[STDIN_FILENO];
+    upipe->write_fd = fds[STDOUT_FILENO];
+
+    return true;
+}
+
+b32 psh_read_fd(Psh_Fd fd, Psh_SB *sb) {
+    isize n;
+    byte buffer[1024];
+
+    while ((n = read(fd, buffer, sizeof buffer)) > 0)
+        psh_sb_append_buf(sb, buffer, n);
+
+    if (n == 0) return true;
+
+    psh_logger(PSH_ERROR, "Could not read fd(%d): %s", fd, strerror(errno));
+    return false;
+}
+
+// pipe IMPL END
 
 #endif // PSH_CORE_IMPL
 
@@ -689,7 +721,11 @@ typedef Psh_Pipeline        Pipeline;
 #define pipeline_end        psh_pipeline_end
 #define pipeline            psh_pipeline
 
+#define open_pipe           psh_open_pipe
+#define read_fd             psh_read_fd
+
 typedef Psh_String_Builder  String_Builder;
+typedef Psh_SB              SB;
 #define sb_append           psh_sb_append
 #define sb_append_buf       psh_sb_append_buf
 #define sb_append_cstr      psh_sb_append_cstr
