@@ -29,7 +29,7 @@ i32 example_read_cmd_output() {
     cmd_append(&cmd, "echo", "lol", "haha");
     if (!cmd_run(&cmd, .fdout = pipe.write_fd)) return 1;
 
-    SB sb = {0};
+    Sb sb = {0};
     if (!fd_read(pipe.read_fd, &sb)) return 1;
     sb_append_null(&sb);
 

@@ -235,9 +235,9 @@ typedef struct {
     } while (0)
 
 #define psh_sb_append_null(sb) psh_da_append(sb, 0)
-// sb END
 
-typedef Psh_String_Builder Psh_SB;
+typedef Psh_String_Builder Psh_Sb;
+// sb END
 
 // pipe START
 
@@ -247,7 +247,6 @@ typedef struct {
 } Psh_Unix_Pipe;
 
 b32 psh_pipe_open(Psh_Unix_Pipe *upipe);
-b32 psh_fd_read(Psh_Fd fd, Psh_SB *sb);
 // pipe END
 
 #endif // PSH_CORE_INCLUDE
@@ -335,7 +334,7 @@ static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr);
 static inline b32 psh__proc_wait(Psh_Proc pid);
 static inline i32 psh__proc_wait_async(Psh_Proc pid);
 static inline b32 psh__procs_wait(Psh_Procs procs);
-static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_SB *sb);
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_Sb *sb);
 static inline i32 psh__nprocs(void);
 
 b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
@@ -383,7 +382,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     }
 
 #ifndef PSH_NO_ECHO
-    Psh_SB sb = {0};
+    Psh_Sb sb = {0};
     psh__cmd_build_cstr(cmd, &sb);
     psh_logger(PSH_INFO, "CMD: %s", sb.items);
     psh_da_free(sb);
@@ -544,7 +543,7 @@ static inline b32 psh__procs_wait(Psh_Procs procs) {
     return result;
 }
 
-static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_SB *sb) {
+static inline void psh__cmd_build_cstr(Psh_Cmd cmd, Psh_Sb *sb) {
     for (usize i = 0; i < cmd.count; ++i) {
         byte *arg = cmd.items[i];
         if (arg == NULL) return;
@@ -653,7 +652,7 @@ b32 psh_pipe_open(Psh_Unix_Pipe *upipe) {
     return true;
 }
 
-b32 psh_fd_read(Psh_Fd fd, Psh_SB *sb) {
+b32 psh_fd_read(Psh_Fd fd, Psh_Sb *sb) {
     isize n;
     byte buffer[1024];
 
@@ -726,7 +725,7 @@ typedef Psh_Unix_Pipe       Unix_Pipe;
 #define fd_read             psh_fd_read
 
 typedef Psh_String_Builder  String_Builder;
-typedef Psh_SB              SB;
+typedef Psh_Sb              Sb;
 #define sb_append           psh_sb_append
 #define sb_append_buf       psh_sb_append_buf
 #define sb_append_cstr      psh_sb_append_cstr
