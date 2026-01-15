@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/poll.h>
 
 // Data types START
 
@@ -237,6 +238,7 @@ typedef struct {
 #define psh_sb_append_null(sb) psh_da_append(sb, 0)
 
 typedef Psh_String_Builder Psh_Sb;
+#define psh_sb_arg(sb)  (i32)sb.count, sb.items
 // sb END
 
 // pipe START
@@ -248,6 +250,30 @@ typedef struct {
 
 b32 psh_pipe_open(Psh_Unix_Pipe *upipe);
 // pipe END
+
+// reader START
+
+typedef struct {
+    Psh_Fd fd;
+    Psh_Sb store;
+    b32 ready;
+    b32 marked_non_blocking;
+} Psh_Fd_Reader;
+
+typedef struct {
+    i32 timeout;
+    b32 non_blocking_io;
+} Psh_Fd_Reader_Opt;
+
+b32 psh_fd_read_opt(Psh_Fd_Reader r[], usize rcount, Psh_Fd_Reader_Opt opt);
+#define psh_fd_read(r, rcount, ...)     \
+    psh_fd_read_opt(r, rcount, (Psh_Fd_Reader_Opt) {__VA_ARGS__})
+#define psh_fd_read1(r, ...)     \
+    psh_fd_read_opt(r, 1, (Psh_Fd_Reader_Opt) {__VA_ARGS__})
+
+b32 psh_fd_readers_ready(Psh_Fd_Reader r[], usize rcount);
+b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount);
+// reader END
 
 #endif // PSH_CORE_INCLUDE
 
@@ -652,21 +678,114 @@ b32 psh_pipe_open(Psh_Unix_Pipe *upipe) {
     return true;
 }
 
-b32 psh_fd_read(Psh_Fd fd, Psh_Sb *sb) {
+// pipe IMPL END
+
+// reader IMPL START
+
+static inline 
+b32 psh__fd_set_nonblocking(Psh_Fd fd) { 
+    i32 flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        psh_logger(PSH_ERROR, "Could not get flags: %s", strerror(errno));
+        return false;
+    }
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        psh_logger(PSH_ERROR, "Could not set flags: %s", strerror(errno));
+        return false;
+    }
+    
+    return true;
+}
+
+static inline
+b32 psh__init_pfds(struct pollfd pfds[], Psh_Fd_Reader r[], usize rcount, b32 non_blocking) {
+    for (usize i = 0; i < rcount; ++i) {
+        if (non_blocking && !r[i].marked_non_blocking) {
+            if (!psh__fd_set_nonblocking(r[i].fd))
+                return false;
+
+            r[i].marked_non_blocking = true;
+        }
+
+        pfds[i] = (struct pollfd) {
+            .fd = r[i].fd,
+            .events = POLLIN
+        };
+    }
+
+    return true;
+}
+
+static inline
+b32 psh__reader_read(Psh_Fd_Reader *reader) {
     isize n;
     byte buffer[1024];
+    while ((n = read(reader->fd, buffer, sizeof buffer)) > 0)
+        psh_sb_append_buf(&reader->store, buffer, n);
 
-    while ((n = read(fd, buffer, sizeof buffer)) > 0)
-        psh_sb_append_buf(sb, buffer, n);
+    if (n == 0) {
+        psh_fd_close_safe(reader->fd);
+        reader->ready = true;
+        return true;
+    }
 
-    psh_fd_close_safe(fd);
-    if (n == 0) return true;
+    if (errno == EAGAIN || errno == EINTR)
+        return true;
 
-    psh_logger(PSH_ERROR, "Could not read fd(%d): %s", fd, strerror(errno));
+    psh_logger(PSH_ERROR, "Could not read fd(%d): %s", reader->fd, strerror(errno));
     return false;
 }
 
-// pipe IMPL END
+b32 psh_fd_read_opt(Psh_Fd_Reader readers[], usize rcount, Psh_Fd_Reader_Opt opt) {
+    struct pollfd pfds[rcount];
+    if (!psh__init_pfds(pfds, readers, rcount, opt.non_blocking_io))
+        return false;
+
+    i32 n = poll(pfds, rcount, opt.timeout);
+    if (n < 0) {
+        if (errno == EINTR) return true;
+
+        psh_logger(PSH_ERROR, "Could not poll: %s", strerror(errno));
+        return false;
+    }
+
+    for (usize i = 0; i < rcount; ++i) {
+        Psh_Fd_Reader *reader = &readers[i];
+        struct pollfd pfd = pfds[i];
+
+        if (reader->ready) continue;
+
+        if (pfd.revents & POLLERR) {
+            psh_logger(PSH_ERROR, "A poll error occured");
+            return false;
+        }
+
+        if (pfd.revents & (POLLIN | POLLHUP)) {
+            if (!psh__reader_read(reader))
+                return false;
+        }
+    }
+
+    return true;
+}
+
+b32 psh_fd_readers_ready(Psh_Fd_Reader r[], usize rcount) {
+    for (usize i = 0; i < rcount; ++i)
+        if (!r[i].ready) return false;
+
+    return true;
+}
+
+b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
+    while (!psh_fd_readers_ready(r, rcount))
+        if (!psh_fd_read(r, rcount, .timeout = -1, .non_blocking_io = true))
+            return false;
+
+    return true;
+}
+
+// reader IMPL END
 
 #endif // PSH_CORE_IMPL
 
@@ -723,6 +842,12 @@ typedef Psh_Pipeline        Pipeline;
 #define pipe_open           psh_pipe_open
 typedef Psh_Unix_Pipe       Unix_Pipe;
 #define fd_read             psh_fd_read
+#define fd_read1            psh_fd_read1
+#define fd_read_opt         psh_fd_read_opt
+typedef Psh_Fd_Reader       Fd_Reader;
+typedef Psh_Fd_Reader_Opt   Fd_Reader_Opt;
+#define fd_readers_ready    psh_fd_readers_ready
+#define fd_readers_join     psh_fd_readers_join
 
 typedef Psh_String_Builder  String_Builder;
 typedef Psh_Sb              Sb;
@@ -730,5 +855,6 @@ typedef Psh_Sb              Sb;
 #define sb_append_buf       psh_sb_append_buf
 #define sb_append_cstr      psh_sb_append_cstr
 #define sb_append_null      psh_sb_append_null
+#define sb_arg              psh_sb_arg
 
 #endif // PSH_CORE_NO_PREFIX

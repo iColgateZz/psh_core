@@ -5,11 +5,13 @@
 i32 example_simple_command();
 i32 example_read_cmd_output();
 i32 example_pipeline();
+i32 example_multiple_readers();
 
 i32 main() {
     // example_simple_command();
-    example_read_cmd_output();
+    // example_read_cmd_output();
     // example_pipeline();
+    example_multiple_readers();
 
     return 0;
 }
@@ -29,11 +31,11 @@ i32 example_read_cmd_output() {
     cmd_append(&cmd, "echo", "lol", "haha");
     if (!cmd_run(&cmd, .fdout = pipe.write_fd)) return 1;
 
-    Sb sb = {0};
-    if (!fd_read(pipe.read_fd, &sb)) return 1;
-    sb_append_null(&sb);
+    Fd_Reader r = {.fd = pipe.read_fd};
+    if (!psh_fd_read1(&r)) return 1;
+    sb_append_null(&r.store);
 
-    logger(PSH_INFO, "I read cmd output: %s", sb.items);
+    logger(PSH_INFO, "I read cmd output: %s", r.store.items);
     return 0;
 }
 
@@ -67,5 +69,43 @@ i32 example_pipeline() {
     cmd_append(&cmd, "rm", "file.txt");
     if (!cmd_run(&cmd)) return 1;
 
+    return 0;
+}
+
+i32 example_multiple_readers() {
+    Unix_Pipe outpipe = {0};
+    if (!pipe_open(&outpipe)) return 1;
+
+    Unix_Pipe errpipe = {0};
+    if (!pipe_open(&errpipe)) return 1;
+
+    const i32 rcount = 2;
+    Fd_Reader readers[rcount] = {
+        [0].fd = outpipe.read_fd,
+        [1].fd = errpipe.read_fd
+    };
+
+    Cmd cmd = {0};
+    cmd_append(&cmd, "echo", "-n", "lol");
+
+    if (!cmd_run(
+        &cmd, 
+        .fdout = outpipe.write_fd,
+        .fderr = errpipe.write_fd
+    )) return 1;
+
+    for (i32 i = 0; i < 10; ++i) {
+        // read whatever is readable
+        // in a non-blocking io fashion
+        fd_read(readers, rcount, .non_blocking_io = true);
+        // do some other stuff
+        // ...
+        // ...
+    }
+
+    if (!fd_readers_join(readers, rcount)) return 1;
+
+    printf("From stdout: %.*s\n", sb_arg(readers[0].store));
+    printf("From stderr: %.*s\n", sb_arg(readers[1].store));
     return 0;
 }
