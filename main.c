@@ -9,7 +9,7 @@ i32 example_multiple_readers();
 
 i32 main() {
     // example_simple_command();
-    // example_read_cmd_output();
+    example_read_cmd_output();
     // example_pipeline();
     example_multiple_readers();
 
@@ -31,11 +31,10 @@ i32 example_read_cmd_output() {
     cmd_append(&cmd, "echo", "lol", "haha");
     if (!cmd_run(&cmd, .fdout = pipe.write_fd)) return 1;
 
-    Fd_Reader r = {.fd = pipe.read_fd};
-    if (!psh_fd_read1(&r)) return 1;
-    sb_append_null(&r.store);
+    Fd_Reader reader = {.fd = pipe.read_fd};
+    if (!fd_read1(&reader)) return 1;
 
-    logger(PSH_INFO, "I read cmd output: %s", r.store.items);
+    logger(PSH_INFO, "I read cmd output: %.*s", sb_arg(reader.store));
     return 0;
 }
 
