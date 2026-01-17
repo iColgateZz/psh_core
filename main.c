@@ -51,7 +51,7 @@ i32 example_pipeline() {
         pipeline_chain(&p, &cmd);
 
         cmd_append(&cmd, "xxd");
-        pipeline_chain(&p, &cmd, .fdin = fd_oread("test.sh"), .fdout = fd_owrite("file.txt"));
+        pipeline_chain(&p, &cmd, .fdin = fd_openr("test.sh"), .fdout = fd_openw("file.txt"));
     } if (p.error) return 1;
 
     pipeline(&p, .async = &procs) {

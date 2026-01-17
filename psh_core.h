@@ -151,9 +151,9 @@ typedef i32 Psh_Fd;
 #define PSH_INVALID_FD -1
 
 Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions);
-Psh_Fd psh_fd_oread(byte *path);
-Psh_Fd psh_fd_owrite(byte *path);
-Psh_Fd psh_fd_oappend(byte *path);
+Psh_Fd psh_fd_openr(byte *path);
+Psh_Fd psh_fd_openw(byte *path);
+Psh_Fd psh_fd_opena(byte *path);
 void psh_fd_close(Psh_Fd fd);
 void psh_fd_close_safe(Psh_Fd fd);
 b32 psh_fd_not_default(Psh_Fd fd);
@@ -322,17 +322,17 @@ Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions) {
     return result;
 }
 
-Psh_Fd psh_fd_oread(byte *path) {
+Psh_Fd psh_fd_openr(byte *path) {
     return psh_fd_open(path, O_RDONLY, 0);
 }
 
-Psh_Fd psh_fd_owrite(byte *path) {
+Psh_Fd psh_fd_openw(byte *path) {
     return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_TRUNC,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-Psh_Fd psh_fd_oappend(byte *path) {
+Psh_Fd psh_fd_opena(byte *path) {
     return psh_fd_open(path, 
                    O_WRONLY | O_CREAT | O_APPEND,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -818,9 +818,9 @@ typedef Psh_Procs           Procs;
 typedef Psh_Fd              Fd;
 #define INVALID_FD          PSH_INVALID_FD
 #define fd_open             psh_fd_open
-#define fd_oread            psh_fd_oread
-#define fd_owrite           psh_fd_owrite
-#define fd_oappend          psh_fd_oappend
+#define fd_openr            psh_fd_openr
+#define fd_openw            psh_fd_openw
+#define fd_opena            psh_fd_opena
 #define fd_close            psh_fd_close
 #define fd_close_safe       psh_fd_close_safe
 #define fd_not_default      psh_fd_not_default
