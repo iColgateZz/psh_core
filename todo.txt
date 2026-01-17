@@ -1,3 +1,2 @@
-- rename oread, owrite, ...
 - add flag to keep fds open
 - something with stderr in pipelines
