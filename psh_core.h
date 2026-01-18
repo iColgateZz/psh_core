@@ -171,6 +171,9 @@ typedef struct {
     Psh_Procs *async;
     u8 max_procs;
     Psh_Fd fdin, fdout, fderr;
+    b32 keep_fdin_open;
+    b32 keep_fdout_open;
+    b32 keep_fderr_open;
 } Psh_Cmd_Opt;
 
 #define psh_cmd_append(cmd, ...)                    \
@@ -378,16 +381,15 @@ b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     Psh_Proc pid = psh__cmd_start_proc(*cmd, opt.fdin, opt.fdout, opt.fderr);
     if (pid == PSH_INVALID_PROC) psh_return_defer(false);
 
-    if (opt.async) {
+    if (opt.async)
         psh_da_append(opt.async, pid);
-    } else {
+    else
         result = psh__proc_wait(pid);
-    }
 
 defer:
-    psh_fd_close_safe(opt.fdin);
-    psh_fd_close_safe(opt.fdout);
-    psh_fd_close_safe(opt.fderr);
+    if (!opt.keep_fdin_open)  psh_fd_close_safe(opt.fdin);
+    if (!opt.keep_fdout_open) psh_fd_close_safe(opt.fdout);
+    if (!opt.keep_fderr_open) psh_fd_close_safe(opt.fderr);
 
     cmd->count = 0;
 
@@ -679,12 +681,12 @@ static inline
 b32 psh__fd_set_nonblocking(Psh_Fd fd) { 
     i32 flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
-        psh_logger(PSH_ERROR, "Could not get flags: %s", strerror(errno));
+        psh_logger(PSH_ERROR, "Could not get flags of fd(%d): %s", fd, strerror(errno));
         return false;
     }
 
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        psh_logger(PSH_ERROR, "Could not set flags: %s", strerror(errno));
+        psh_logger(PSH_ERROR, "Could not set flags of fd(%d): %s", fd, strerror(errno));
         return false;
     }
     

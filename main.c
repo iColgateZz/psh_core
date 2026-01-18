@@ -7,13 +7,15 @@ i32 example_read_cmd_output();
 i32 example_pipeline();
 i32 example_multiple_readers();
 i32 example_redirect_stderr_to_stdout();
+i32 example_use_one_fd_for_multiple_cmds();
 
 i32 main() {
     // example_simple_command();
     // example_read_cmd_output();
     // example_pipeline();
     // example_multiple_readers();
-    example_redirect_stderr_to_stdout();
+    // example_redirect_stderr_to_stdout();
+    example_use_one_fd_for_multiple_cmds();
 
     return 0;
 }
@@ -139,5 +141,34 @@ i32 example_redirect_stderr_to_stdout() {
 
     printf("From stdout: %.*s\n", sb_arg(readers[0].store));
     printf("From stderr: %.*s\n", sb_arg(readers[1].store));
+    return 0;
+}
+
+i32 example_use_one_fd_for_multiple_cmds() {
+    static byte *path = "some_path.txt";
+    Fd fdout = fd_opena(path);
+
+    Cmd cmd = {0};
+    cmd_append(&cmd, "echo", "lol");
+    if (!cmd_run(
+        &cmd, 
+        .fdout = fdout,
+        .keep_fdout_open = true
+    )) return 1;
+
+    cmd.count = 2;
+    if (!cmd_run(
+        &cmd, 
+        .fdout = fdout
+    )) return 1;
+
+    Fd_Reader reader = {.fd = fd_openr(path)};
+    if (!fd_read1(&reader)) return 1;
+
+    printf("Read: %.*s", sb_arg(reader.store));
+
+    cmd_append(&cmd, "rm", path);
+    if (!cmd_run(&cmd)) return 1;
+
     return 0;
 }
