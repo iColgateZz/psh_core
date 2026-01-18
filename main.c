@@ -6,12 +6,14 @@ i32 example_simple_command();
 i32 example_read_cmd_output();
 i32 example_pipeline();
 i32 example_multiple_readers();
+i32 example_redirect_stderr_to_stdout();
 
 i32 main() {
     // example_simple_command();
-    example_read_cmd_output();
+    // example_read_cmd_output();
     // example_pipeline();
-    example_multiple_readers();
+    // example_multiple_readers();
+    example_redirect_stderr_to_stdout();
 
     return 0;
 }
@@ -85,7 +87,7 @@ i32 example_multiple_readers() {
     };
 
     Cmd cmd = {0};
-    cmd_append(&cmd, "echo", "-n", "lol");
+    cmd_append(&cmd, "time", "ls", "-alh");
 
     if (!cmd_run(
         &cmd, 
@@ -102,6 +104,37 @@ i32 example_multiple_readers() {
         // ...
     }
 
+    if (!fd_readers_join(readers, rcount)) return 1;
+
+    printf("From stdout: %.*s\n", sb_arg(readers[0].store));
+    printf("From stderr: %.*s\n", sb_arg(readers[1].store));
+    return 0;
+}
+
+i32 example_redirect_stderr_to_stdout() {
+    Unix_Pipe outpipe = {0};
+    if (!pipe_open(&outpipe)) return 1;
+
+    Unix_Pipe errpipe = {0};
+    if (!pipe_open(&errpipe)) return 1;
+
+    const i32 rcount = 2;
+    Fd_Reader readers[rcount] = {
+        [0].fd = outpipe.read_fd,
+        [1].fd = errpipe.read_fd
+    };
+
+    Cmd cmd = {0};
+    // by default time writes its output to stderr
+    cmd_append(&cmd, "time", "ls", "-alh");
+
+    if (!cmd_run(
+        &cmd, 
+        .fdout = outpipe.write_fd,
+        .fderr = outpipe.write_fd
+    )) return 1;
+
+    close(errpipe.write_fd);
     if (!fd_readers_join(readers, rcount)) return 1;
 
     printf("From stdout: %.*s\n", sb_arg(readers[0].store));
