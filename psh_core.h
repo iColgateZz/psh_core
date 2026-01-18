@@ -266,6 +266,7 @@ typedef struct {
 typedef struct {
     i32 timeout;
     b32 non_blocking_io;
+    b32 keep_fd_open;
 } Psh_Fd_Reader_Opt;
 
 b32 psh_fd_read_opt(Psh_Fd_Reader r[], usize rcount, Psh_Fd_Reader_Opt opt);
@@ -713,14 +714,14 @@ b32 psh__init_pfds(struct pollfd pfds[], Psh_Fd_Reader r[], usize rcount, b32 no
 }
 
 static inline
-b32 psh__reader_read(Psh_Fd_Reader *reader) {
+b32 psh__reader_read(Psh_Fd_Reader *reader, b32 keep_fd_open) {
     isize n;
     byte buffer[1024];
     while ((n = read(reader->fd, buffer, sizeof buffer)) > 0)
         psh_sb_append_buf(&reader->store, buffer, n);
 
     if (n == 0) {
-        psh_fd_close_safe(reader->fd);
+        if (!keep_fd_open) psh_fd_close_safe(reader->fd);
         reader->ready = true;
         return true;
     }
@@ -757,7 +758,7 @@ b32 psh_fd_read_opt(Psh_Fd_Reader readers[], usize rcount, Psh_Fd_Reader_Opt opt
         }
 
         if (pfd.revents & (POLLIN | POLLHUP)) {
-            if (!psh__reader_read(reader))
+            if (!psh__reader_read(reader, opt.keep_fd_open))
                 return false;
         }
     }
