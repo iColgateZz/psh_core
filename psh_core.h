@@ -583,8 +583,8 @@ static inline i32 psh__nprocs(void) {
 
 // pipeline IMPL START
 
-static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_opt, 
-    Psh_Pipeline_Opt pipe_opt, Psh_Fd pipe_fdin, Psh_Fd pipe_fdout);
+static inline void psh__pipeline_setup_opt(Psh_Cmd_Opt *prev_cmd_opt, 
+    Psh_Pipeline_Opt p_opt, Psh_Fd p_fdin, Psh_Fd p_fdout);
 
 b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cmd_opt) {
     if (p->error) return false;
@@ -633,28 +633,31 @@ b32 psh_pipeline_end(Psh_Pipeline *p) {
 }
 
 static inline void psh__pipeline_setup_opt(
-    Psh_Cmd_Opt *prev_opt,
-    Psh_Pipeline_Opt pipe_opt,
-    Psh_Fd pipe_fdin,
-    Psh_Fd pipe_fdout
+    Psh_Cmd_Opt *prev_cmd_opt,
+    Psh_Pipeline_Opt p_opt,
+    Psh_Fd p_fdin,
+    Psh_Fd p_fdout
 ) {
-    // If prev_opt has non-default settings it means 
+    // If prev_cmd_opt has non-default settings it means 
     // the user has opened a file for redirection. 
     // Close the fds from pipes and leave user fds.
-    if (psh_fd_not_default(prev_opt->fdin)) {
-        psh_fd_close(pipe_fdin);
+    if (psh_fd_not_default(prev_cmd_opt->fdin)) {
+        psh_fd_close(p_fdin);
     } else { // Otherwise continue with pipe fds
-        prev_opt->fdin = pipe_fdin;
+        prev_cmd_opt->fdin = p_fdin;
     }
 
-    if (psh_fd_not_default(prev_opt->fdout)) {
-        psh_fd_close(pipe_fdout);
+    if (psh_fd_not_default(prev_cmd_opt->fdout)) {
+        psh_fd_close(p_fdout);
     } else {
-        prev_opt->fdout = pipe_fdout;
+        prev_cmd_opt->fdout = p_fdout;
     }
 
-    prev_opt->async = pipe_opt.async;
-    prev_opt->max_procs = pipe_opt.max_procs;
+    // Pipeline options override only default cmd settings
+    // Priority (highest to lowest):
+    // cmd_opt > pipeline_opt > default settings
+    if (prev_cmd_opt->async == NULL)  prev_cmd_opt->async = p_opt.async;
+    if (prev_cmd_opt->max_procs == 0) prev_cmd_opt->max_procs = p_opt.max_procs;
 }
 
 // pipeline IMPL END
