@@ -639,14 +639,13 @@ static inline void psh__pipeline_setup_opt(
     // the user has opened a file for redirection. 
     // Close the fds from pipes and leave user fds.
     if (psh_fd_not_default(prev_opt->fdin)) {
-        psh_fd_close_safe(pipe_fdin);
-    } else {
-        // Otherwise continue with pipe fds
+        psh_fd_close(pipe_fdin);
+    } else { // Otherwise continue with pipe fds
         prev_opt->fdin = pipe_fdin;
     }
 
     if (psh_fd_not_default(prev_opt->fdout)) {
-        psh_fd_close_safe(pipe_fdout);
+        psh_fd_close(pipe_fdout);
     } else {
         prev_opt->fdout = pipe_fdout;
     }
