@@ -13,9 +13,9 @@ i32 main() {
     // example_simple_command();
     // example_read_cmd_output();
     // example_pipeline();
-    // example_multiple_readers();
+    example_multiple_readers();
     // example_redirect_stderr_to_stdout();
-    example_use_one_fd_for_multiple_cmds();
+    // example_use_one_fd_for_multiple_cmds();
 
     return 0;
 }

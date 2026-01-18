@@ -662,14 +662,10 @@ static inline void psh__pipeline_setup_opt(
 // pipe IMPL START
 
 b32 psh_pipe_open(Psh_Unix_Pipe *upipe) {
-    Psh_Fd fds[2];
-    if (pipe(fds) < 0) {
+    if (pipe((Psh_Fd *)upipe) < 0) {
         psh_logger(PSH_ERROR, "Could not create pipes: %s", strerror(errno));
         return false;
     }
-
-    upipe->read_fd = fds[STDIN_FILENO];
-    upipe->write_fd = fds[STDOUT_FILENO];
 
     return true;
 }
