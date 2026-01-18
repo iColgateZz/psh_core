@@ -437,25 +437,19 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
 
 static inline void psh__setup_child_io(Psh_Fd fdin, Psh_Fd fdout, Psh_Fd fderr) {
     // psh_logger(PSH_INFO, "Psh_Fds: %d, %d, %d", fdin, fdout, fderr);
-    if (fdin != PSH_INVALID_FD) {
-        if (dup2(fdin, STDIN_FILENO) < 0) {
-            psh_logger(PSH_ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+    if (dup2(fdin, STDIN_FILENO) < 0) {
+        psh_logger(PSH_ERROR, "Could not setup stdin(%d) for child process: %s", fdin, strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    if (fdout != PSH_INVALID_FD) {
-        if (dup2(fdout, STDOUT_FILENO) < 0) {
-            psh_logger(PSH_ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+    if (dup2(fdout, STDOUT_FILENO) < 0) {
+        psh_logger(PSH_ERROR, "Could not setup stdout(%d) for child process: %s", fdout, strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    if (fderr != PSH_INVALID_FD) {
-        if (dup2(fderr, STDERR_FILENO) < 0) {
-            psh_logger(PSH_ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+    if (dup2(fderr, STDERR_FILENO) < 0) {
+        psh_logger(PSH_ERROR, "Could not setup stderr(%d) for child process: %s", fderr, strerror(errno));
+        exit(EXIT_FAILURE);
     }
 }
 
