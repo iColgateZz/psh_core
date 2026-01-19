@@ -3,3 +3,5 @@
 2. timeout (give 3 seconds to run, otherwise fail)
 3. suppress writing to stderr
 4. callback to handle errors
+
+- update readme
