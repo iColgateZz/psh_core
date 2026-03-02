@@ -39,7 +39,7 @@ typedef size_t      usize;
 
 #ifndef PSH_ASSERT
     #include <assert.h>
-#define PSH_ASSERT assert
+    #define PSH_ASSERT assert
 #endif
 // assert END
 
@@ -55,18 +55,18 @@ typedef size_t      usize;
 
 #define PSH_DA_INIT_CAP 256
 
-#define psh_da_reserve(da, expected_capacity)                                                  \
-    do {                                                                                   \
-        if ((expected_capacity) > (da)->capacity) {                                        \
-            if ((da)->capacity == 0) {                                                     \
-                (da)->capacity = PSH_DA_INIT_CAP;                                              \
-            }                                                                              \
-            while ((expected_capacity) > (da)->capacity) {                                 \
-                (da)->capacity *= 2;                                                       \
-            }                                                                              \
-            (da)->items = PSH_DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));  \
-            PSH_ASSERT((da)->items != NULL && "Buy more RAM lol");                          \
-        }                                                                                  \
+#define psh_da_reserve(da, expected_capacity)                                                   \
+    do {                                                                                        \
+        if ((expected_capacity) > (da)->capacity) {                                             \
+            if ((da)->capacity == 0) {                                                          \
+                (da)->capacity = PSH_DA_INIT_CAP;                                               \
+            }                                                                                   \
+            while ((expected_capacity) > (da)->capacity) {                                      \
+                (da)->capacity *= 2;                                                            \
+            }                                                                                   \
+            (da)->items = PSH_DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));   \
+            PSH_ASSERT((da)->items != NULL && "Buy more RAM lol");                              \
+        }                                                                                       \
     } while (0)
 
 // Append an item to a dynamic array
