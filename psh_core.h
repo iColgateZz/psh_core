@@ -462,6 +462,14 @@ static inline b32 psh__block_unwanted_procs(Psh_Procs *async, u8 max_procs) {
             if (ret) {
                 psh_da_remove_unordered(async, i);
             } else {
+                #define SLEEP_MS 1
+                #define SLEEP_NS SLEEP_MS * 1000 * 1000
+                static struct timespec duration = {
+                    .tv_sec = SLEEP_NS / (1000*1000*1000),
+                    .tv_nsec = SLEEP_NS % (1000*1000*1000),
+                };
+
+                nanosleep(&duration, NULL);
                 ++i;
             }
         }
@@ -517,18 +525,8 @@ static inline i32 psh__proc_wait_async(Psh_Proc pid) {
     }
 
     // With WNOHANG if waitpid returns 0, the process has 
-    // not yet finished running. Sleep and retry later.
-    if (ret == 0) {
-        #define SLEEP_MS 1
-        #define SLEEP_NS SLEEP_MS * 1000 * 1000
-        static struct timespec duration = {
-            .tv_sec = SLEEP_NS / (1000*1000*1000),
-            .tv_nsec = SLEEP_NS % (1000*1000*1000),
-        };
-
-        nanosleep(&duration, NULL);
-        return 0;
-    }
+    // not yet finished running. Retry later.
+    if (ret == 0) return 0;
 
     if (WIFEXITED(wstatus)) {
         i32 exit_status = WEXITSTATUS(wstatus);
