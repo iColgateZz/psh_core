@@ -13,9 +13,9 @@ i32 main() {
     // example_simple_command();
     // example_read_cmd_output();
     // example_pipeline();
-    example_multiple_readers();
+    // example_multiple_readers();
     // example_redirect_stderr_to_stdout();
-    // example_use_one_fd_for_multiple_cmds();
+    example_use_one_fd_for_multiple_cmds();
 
     return 0;
 }
@@ -36,7 +36,7 @@ i32 example_read_cmd_output() {
     if (!cmd_run(&cmd, .fdout = pipe.write_fd)) return 1;
 
     Fd_Reader reader = {.fd = pipe.read_fd};
-    if (!fd_read1(&reader)) return 1;
+    if (!fd_read(&reader)) return 1;
 
     logger(PSH_INFO, "I read cmd output: %.*s", sb_arg(reader.store));
     return 0;
@@ -100,7 +100,9 @@ i32 example_multiple_readers() {
     for (i32 i = 0; i < 10; ++i) {
         // read whatever is readable
         // in a non-blocking io fashion
-        fd_read(readers, rcount, .non_blocking_io = true);
+        for (i32 j = 0; j < rcount; ++j) {
+            fd_read(&readers[j], .nonblocking = true);
+        }
         // do some other stuff
         // ...
         // ...
@@ -163,7 +165,7 @@ i32 example_use_one_fd_for_multiple_cmds() {
     )) return 1;
 
     Fd_Reader reader = {.fd = fd_openr(path)};
-    if (!fd_read1(&reader)) return 1;
+    if (!fd_read(&reader)) return 1;
 
     printf("Read: %.*s", sb_arg(reader.store));
 
