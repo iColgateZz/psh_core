@@ -163,7 +163,9 @@ i32 example_use_one_fd_for_multiple_cmds() {
         &cmd, 
         .fdout = fdout
     )) return 1;
-
+    
+    //TODO: open fd for RW and don't close in second cmd
+    // reuse the fd here and let fd_read close it
     Fd_Reader reader = {.fd = fd_openr(path)};
     if (!fd_read(&reader)) return 1;
 
