@@ -55,6 +55,13 @@ typedef size_t      usize;
 
 #define PSH_DA_INIT_CAP 256
 
+#define da_typedef(Name, Type) \
+typedef struct {    \
+    Type *items;    \
+    usize count;    \
+    usize capacity; \
+} Name;
+
 #define psh_da_reserve(da, expected_capacity)                                                   \
     do {                                                                                        \
         if ((expected_capacity) > (da)->capacity) {                                             \
