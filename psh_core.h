@@ -55,7 +55,7 @@ typedef size_t      usize;
 
 #define PSH_DA_INIT_CAP 256
 
-#define da_typedef(Name, Type) \
+#define psh_da_typedef(Name, Type) \
 typedef struct {    \
     Type *items;    \
     usize count;    \
@@ -103,6 +103,7 @@ typedef struct {    \
     } while (0)
 
 #define psh_da_last(da) (da)->items[(PSH_ASSERT((da)->count > 0), (da)->count-1)]
+#define psh_da_pop(da) (da)->items[(PSH_ASSERT((da)->count > 0), --(da)->count)]
 
 // Replace the element at given index with the last
 // element in the array and decrement the item count
@@ -786,6 +787,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 
 #ifdef PSH_CORE_NO_PREFIX
 
+#define da_typedef          psh_da_typedef
 #define da_reserve          psh_da_reserve
 #define da_append           psh_da_append
 #define da_free             psh_da_free
@@ -793,6 +795,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define da_foreach          psh_da_foreach
 #define da_resize           psh_da_resize
 #define da_last             psh_da_last
+#define da_pop              psh_da_pop
 #define da_remove_unordered psh_da_remove_unordered
 
 #define return_defer        psh_return_defer
