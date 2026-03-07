@@ -33,6 +33,19 @@ typedef size_t      usize;
 
 #define true 1
 #define false 0
+
+typedef struct {
+    byte *s;
+    usize len;
+} psh_s8;
+
+#define psh_countof(x)                (usize)(sizeof(x) / sizeof(*(x)))
+#define psh_lenof(s)                  psh_countof(s) - 1
+
+#define psh_s8(...)                   s8_(__VA_ARGS__, s8_from_heap, s8_read_only)(__VA_ARGS__)
+#define s8_(a, b, c, ...)             c
+#define s8_read_only(str)             (psh_s8){.s = str, .len = psh_lenof(str)}
+#define s8_from_heap(str, str_len)    (psh_s8){.s = str, .len = str_len}
 // Data types END
 
 // assert START
@@ -786,6 +799,10 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #endif // PSH_CORE_IMPL
 
 #ifdef PSH_CORE_NO_PREFIX
+
+#define s8                  psh_s8
+#define countof             psh_countof
+#define lenof               psh_lenof
 
 #define da_typedef          psh_da_typedef
 #define da_reserve          psh_da_reserve
