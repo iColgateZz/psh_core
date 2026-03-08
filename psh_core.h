@@ -115,6 +115,7 @@ typedef struct {    \
         (da)->count = (new_size);       \
     } while (0)
 
+#define psh_da_clear(da) (da)->count = 0
 #define psh_da_last(da) (da)->items[(PSH_ASSERT((da)->count > 0), (da)->count-1)]
 #define psh_da_pop(da) (da)->items[(PSH_ASSERT((da)->count > 0), --(da)->count)]
 
@@ -811,6 +812,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define da_append_many      psh_da_append_many
 #define da_foreach          psh_da_foreach
 #define da_resize           psh_da_resize
+#define da_clear            psh_da_clear
 #define da_last             psh_da_last
 #define da_pop              psh_da_pop
 #define da_remove_unordered psh_da_remove_unordered
