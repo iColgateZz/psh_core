@@ -141,6 +141,9 @@ typedef struct {    \
     } while(0)
 
 #define PSH_UNUSED(value) (void) value
+
+#define psh_container_of(ptr, type, member) \
+    ((type *)((char *)(ptr) - offsetof(type, member)))
 // macros END
 
 // psh_logger START
@@ -820,6 +823,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define return_defer        psh_return_defer
 #define UNREACHABLE         PSH_UNREACHABLE
 #define UNUSED              PSH_UNUSED
+#define container_of        psh_container_of
 
 typedef Psh_Log_Level       Log_Level;
 #define INFO                PSH_INFO
