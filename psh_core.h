@@ -808,7 +808,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define countof             psh_countof
 #define lenof               psh_lenof
 
-#define list_typedef          psh_list_def
+#define list_def              psh_list_def
 #define list_reserve          psh_list_reserve
 #define list_append           psh_list_append
 #define list_free             psh_list_free
