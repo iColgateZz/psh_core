@@ -75,6 +75,8 @@ typedef struct {
         usize capacity;     \
     };
 
+#define List(T) struct T ## List
+
 #define psh_list_reserve(da, expected_capacity)                                                   \
     do {                                                                                        \
         if ((expected_capacity) > (da)->capacity) {                                             \
