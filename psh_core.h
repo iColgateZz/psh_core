@@ -58,70 +58,70 @@ typedef struct {
 
 // da START
 
-#ifndef PSH_DA_REALLOC
-    #define PSH_DA_REALLOC realloc
+#ifndef PSH_LIST_REALLOC
+    #define PSH_LIST_REALLOC realloc
 #endif
 
-#ifndef PSH_DA_FREE
-    #define PSH_DA_FREE free
+#ifndef PSH_LIST_FREE
+    #define PSH_LIST_FREE free
 #endif
 
-#define PSH_DA_INIT_CAP 256
+#define PSH_LIST_INIT_CAP 256
 
-#define psh_da_def(Type)    \
+#define psh_list_def(Type)    \
     struct Type ## List {   \
         Type *items;        \
         usize count;        \
         usize capacity;     \
     };
 
-#define psh_da_reserve(da, expected_capacity)                                                   \
+#define psh_list_reserve(da, expected_capacity)                                                   \
     do {                                                                                        \
         if ((expected_capacity) > (da)->capacity) {                                             \
             if ((da)->capacity == 0) {                                                          \
-                (da)->capacity = PSH_DA_INIT_CAP;                                               \
+                (da)->capacity = PSH_LIST_INIT_CAP;                                               \
             }                                                                                   \
             while ((expected_capacity) > (da)->capacity) {                                      \
                 (da)->capacity *= 2;                                                            \
             }                                                                                   \
-            (da)->items = PSH_DA_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));   \
+            (da)->items = PSH_LIST_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items));   \
             PSH_ASSERT((da)->items != NULL && "Buy more RAM lol");                              \
         }                                                                                       \
     } while (0)
 
 // Append an item to a dynamic array
-#define psh_da_append(da, item)                     \
+#define psh_list_append(da, item)                     \
     do {                                        \
-        psh_da_reserve((da), (da)->count + 1);      \
+        psh_list_reserve((da), (da)->count + 1);      \
         (da)->items[(da)->count++] = (item);    \
     } while (0)
 
-#define psh_da_free(da) PSH_DA_FREE((da).items)
+#define psh_list_free(da) PSH_LIST_FREE((da).items)
 
 // Append several items to a dynamic array
-#define psh_da_append_many(da, new_items, new_items_count)                                          \
+#define psh_list_append_many(da, new_items, new_items_count)                                          \
     do {                                                                                        \
-        psh_da_reserve((da), (da)->count + (new_items_count));                                      \
+        psh_list_reserve((da), (da)->count + (new_items_count));                                      \
         memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
         (da)->count += (new_items_count);                                                       \
     } while (0)
 
-#define psh_da_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+#define psh_list_foreach(Type, it, da) for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
 
 // May be used for cleanup
-#define psh_da_resize(da, new_size)         \
+#define psh_list_resize(da, new_size)         \
     do {                                \
-        psh_da_reserve((da), new_size);     \
+        psh_list_reserve((da), new_size);     \
         (da)->count = (new_size);       \
     } while (0)
 
-#define psh_da_clear(da) (da)->count = 0
-#define psh_da_last(da) (da)->items[(PSH_ASSERT((da)->count > 0), (da)->count-1)]
-#define psh_da_pop(da) (da)->items[(PSH_ASSERT((da)->count > 0), --(da)->count)]
+#define psh_list_clear(da) (da)->count = 0
+#define psh_list_last(da) (da)->items[(PSH_ASSERT((da)->count > 0), (da)->count-1)]
+#define psh_list_pop(da) (da)->items[(PSH_ASSERT((da)->count > 0), --(da)->count)]
 
 // Replace the element at given index with the last
 // element in the array and decrement the item count
-#define psh_da_remove_unordered(da, i)                   \
+#define psh_list_remove_unordered(da, i)                   \
     do {                                             \
         usize j = (i);                               \
         PSH_ASSERT(0 <= j && j < (da)->count);        \
@@ -202,7 +202,7 @@ typedef struct {
 } Psh_Cmd_Opt;
 
 #define psh_cmd_append(cmd, ...)                    \
-    psh_da_append_many(cmd,                         \
+    psh_list_append_many(cmd,                         \
         ((byte *[]){__VA_ARGS__}),              \
         (sizeof((byte *[]){__VA_ARGS__}) / sizeof(byte *)))
 
@@ -254,16 +254,16 @@ typedef struct {
     usize capacity;
 } Psh_String_Builder;
 
-#define psh_sb_append(sb, c) psh_da_append(sb, c)
-#define psh_sb_append_buf(sb, buf, size) psh_da_append_many(sb, buf, size)
+#define psh_sb_append(sb, c) psh_list_append(sb, c)
+#define psh_sb_append_buf(sb, buf, size) psh_list_append_many(sb, buf, size)
 #define psh_sb_append_cstr(sb, cstr)      \
     do {                              \
         byte *s = (cstr);       \
         usize n = strlen(s);         \
-        psh_da_append_many(sb, s, n); \
+        psh_list_append_many(sb, s, n); \
     } while (0)
 
-#define psh_sb_append_null(sb) psh_da_append(sb, 0)
+#define psh_sb_append_null(sb) psh_list_append(sb, 0)
 
 typedef Psh_String_Builder Psh_Sb;
 #define psh_sb_arg(sb)  (i32)sb.count, sb.items
@@ -403,7 +403,7 @@ b32 psh_cmd_run_opt(Psh_Cmd *cmd, Psh_Cmd_Opt opt) {
     if (pid == PSH_INVALID_PROC) psh_return_defer(false);
 
     if (opt.async)
-        psh_da_append(opt.async, pid);
+        psh_list_append(opt.async, pid);
     else
         result = psh__proc_wait(pid);
 
@@ -434,7 +434,7 @@ static inline Psh_Proc psh__cmd_start_proc(Psh_Cmd cmd, Psh_Fd fdin, Psh_Fd fdou
     Psh_Sb sb = {0};
     psh__cmd_build_cstr(cmd, &sb);
     psh_logger(PSH_INFO, "CMD: %s", sb.items);
-    psh_da_free(sb);
+    psh_list_free(sb);
 #endif
 
     Psh_Proc cpid = fork();
@@ -485,7 +485,7 @@ static inline b32 psh__block_unwanted_procs(Psh_Procs *async, u8 max_procs) {
             if (ret < 0) 
                 return false;
             if (ret) {
-                psh_da_remove_unordered(async, i);
+                psh_list_remove_unordered(async, i);
             } else {
                 #define SLEEP_MS 1
                 #define SLEEP_NS SLEEP_MS * 1000 * 1000
@@ -632,7 +632,7 @@ b32 psh_pipeline_chain_opt(Psh_Pipeline *p, Psh_Cmd *new_cmd, Psh_Cmd_Opt new_cm
 
     p->cmd_opt = new_cmd_opt;
     p->cmd = (Psh_Cmd) {0};
-    psh_da_append_many(&p->cmd, new_cmd->items, new_cmd->count);
+    psh_list_append_many(&p->cmd, new_cmd->items, new_cmd->count);
 
     new_cmd->count = 0;
 
@@ -645,7 +645,7 @@ b32 psh_pipeline_end(Psh_Pipeline *p) {
     psh__pipeline_setup_opt(&p->cmd_opt, p->p_opt, p->prev_read_fd, STDOUT_FILENO);
     b32 ok = psh_cmd_run_opt(&p->cmd, p->cmd_opt);
 
-    psh_da_free(p->cmd);
+    psh_list_free(p->cmd);
     *p = (Psh_Pipeline) {0};
     return ok;
 }
@@ -808,17 +808,17 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define countof             psh_countof
 #define lenof               psh_lenof
 
-#define da_typedef          psh_da_def
-#define da_reserve          psh_da_reserve
-#define da_append           psh_da_append
-#define da_free             psh_da_free
-#define da_append_many      psh_da_append_many
-#define da_foreach          psh_da_foreach
-#define da_resize           psh_da_resize
-#define da_clear            psh_da_clear
-#define da_last             psh_da_last
-#define da_pop              psh_da_pop
-#define da_remove_unordered psh_da_remove_unordered
+#define list_typedef          psh_list_def
+#define list_reserve          psh_list_reserve
+#define list_append           psh_list_append
+#define list_free             psh_list_free
+#define list_append_many      psh_list_append_many
+#define list_foreach          psh_list_foreach
+#define list_resize           psh_list_resize
+#define list_clear            psh_list_clear
+#define list_last             psh_list_last
+#define list_pop              psh_list_pop
+#define list_remove_unordered psh_list_remove_unordered
 
 #define return_defer        psh_return_defer
 #define UNREACHABLE         PSH_UNREACHABLE
