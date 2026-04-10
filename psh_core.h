@@ -68,12 +68,12 @@ typedef struct {
 
 #define PSH_DA_INIT_CAP 256
 
-#define psh_da_typedef(Name, Type) \
-typedef struct {    \
-    Type *items;    \
-    usize count;    \
-    usize capacity; \
-} Name;
+#define psh_da_def(Type)    \
+    struct Type ## List {   \
+        Type *items;        \
+        usize count;        \
+        usize capacity;     \
+    };
 
 #define psh_da_reserve(da, expected_capacity)                                                   \
     do {                                                                                        \
@@ -808,7 +808,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 #define countof             psh_countof
 #define lenof               psh_lenof
 
-#define da_typedef          psh_da_typedef
+#define da_typedef          psh_da_def
 #define da_reserve          psh_da_reserve
 #define da_append           psh_da_append
 #define da_free             psh_da_free
