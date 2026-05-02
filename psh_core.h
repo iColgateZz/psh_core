@@ -359,6 +359,40 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
         ((Arena *[]){__VA_ARGS__}), (sizeof((Arena *[]){__VA_ARGS__}) / sizeof(Arena *)))
 // arena END
 
+// unity build START
+
+typedef i32 psh_ternary;
+#define err -1
+
+void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count);
+#define PSH_REBUILD_UNITY(argc, argv, ...)                                      \
+        psh_rebuild_unity(argc, argv,  ((byte *[]){__FILE__, __VA_ARGS__}),     \
+        (sizeof((byte *[]){__FILE__, __VA_ARGS__}) / sizeof(byte *)));
+
+void psh_rebuild_unity_auto(i32 argc, byte *argv[argc], byte *source);
+#define PSH_REBUILD_UNITY_AUTO(argc, argv)                   \
+        psh_rebuild_unity_auto(argc, argv, __FILE__);
+
+#define psh_shift(array, array_size) (PSH_ASSERT((array_size) > 0), (array_size)--, *(array)++)
+
+#ifndef PSH_CC
+    #define PSH_CC "gcc"
+#endif
+
+#ifndef PSH_CC_FLAGS 
+    #define PSH_CC_FLAGS  "-Wall", "-Wextra", "-O2", "-Wno-initializer-overrides"
+#endif
+
+#ifndef PSH_CC_MORE_FLAGS
+    #define PSH_CC_MORE_FLAGS ""
+#endif
+
+#ifndef PSH_CC_CMD
+    #define PSH_CC_CMD(target, source1, ...) \
+            PSH_CC, PSH_CC_FLAGS, PSH_CC_MORE_FLAGS, "-o", target, source1, __VA_ARGS__
+#endif
+// unity build END
+
 #endif // PSH_CORE_INCLUDE
 
 #ifdef PSH_CORE_IMPL
@@ -368,6 +402,7 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
 #include <fcntl.h>
 #include <time.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 // psh_logger impl START
 
@@ -967,80 +1002,230 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num) 
 }
 // arena IMPL END
 
+// unity build IMPL START
+
+static inline psh_ternary psh__needs_rebuild(byte *executable, byte *src[], usize src_count);
+
+void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count) {
+    byte *executable = psh_shift(argv, argc);
+    byte *source = src[0];
+
+    psh_ternary needs_rebuild = psh__needs_rebuild(executable, src, src_count);
+    if (needs_rebuild == err) exit(EXIT_FAILURE);
+    if (needs_rebuild == false) return;
+
+    Psh_Cmd cmd = {0};
+    psh_cmd_append(&cmd, PSH_CC_CMD(executable, source));
+    if (!psh_cmd_run(&cmd)) exit(EXIT_FAILURE);
+
+    psh_cmd_append(&cmd, executable);
+    psh_list_append_many(&cmd, argv, argc);
+    if (!psh_cmd_run(&cmd)) exit(EXIT_FAILURE);
+
+    exit(EXIT_SUCCESS);
+}
+
+static inline
+psh_ternary psh__needs_rebuild(byte *executable, byte *src[], usize src_count) {
+    struct stat statbuf = {0};
+    if (stat(executable, &statbuf) < 0) {
+        // Executable does not exist
+        if (errno == ENOENT) return true;
+
+        psh_logger(PSH_ERROR, "could not get info about executable %s: %s", executable, strerror(errno));
+        return err;
+    }
+    u32 exec_mod_time = statbuf.st_mtime;
+
+    for (usize i = 0; i < src_count; ++i) {
+        byte *source = src[i];
+        if (stat(source, &statbuf) < 0) {
+            psh_logger(PSH_ERROR, "could not get info about source %s: %s", source, strerror(errno));
+            return err;
+        }
+
+        u32 source_mod_time = statbuf.st_mtime;
+        if (source_mod_time > exec_mod_time) return true;
+    }
+
+    return false;
+}
+
+typedef struct {
+    byte **items;
+    usize count;
+    usize capacity;
+} Sources;
+
+Sources psh__tokenize_deps(usize len, byte string[len]);
+b32 psh__is_ws(byte c);
+b32 psh__is_bs(byte c);
+b32 psh__is_ws_or_bs(byte c);
+b32 psh__is_alpha(byte c);
+b32 psh__is_num(byte c);
+b32 psh__is_path_symbol(byte c);
+b32 psh__is_path(byte c);
+
+void psh_rebuild_unity_auto(i32 argc, byte *argv[argc], byte *source) {
+    Psh_Unix_Pipe pipe = {0};
+    if (!psh_pipe_open(&pipe)) exit(EXIT_FAILURE);
+
+    Psh_Cmd cmd = {0};
+    psh_cmd_append(&cmd, "gcc", "-MM", source);
+    if (!psh_cmd_run(&cmd, .fdout = pipe.write_fd)) exit(EXIT_FAILURE);
+    psh_list_free(cmd);
+
+    Psh_Fd_Reader reader = {.fd = pipe.read_fd};
+    if (!psh_fd_read(&reader)) exit(EXIT_FAILURE);
+
+    Sources sources = psh__tokenize_deps(reader.store.count, reader.store.items);
+    psh_rebuild_unity(argc, argv, sources.items, sources.count);
+
+    psh_list_free(reader.store);
+    psh_list_free(sources);
+}
+
+Sources psh__tokenize_deps(usize len, byte string[len]) {
+    usize position = 0;
+    Sources sources = {0};
+
+    // skip until and over ':'
+    while (string[position] != ':' && position < len) ++position;
+    ++position;
+
+    while (position < len) {
+        while (psh__is_ws_or_bs(string[position]) && position < len) ++position;
+
+        usize start = position;
+        while (psh__is_path(string[position]) && position < len) ++position;
+
+        psh_list_append(&sources, string + start);
+        string[position] = 0;
+        ++position;
+        // printf("Dep: %s\n", string + start);
+    }
+
+    return sources;
+}
+
+b32 psh__is_ws(byte c) {
+    return c == ' '  || c == '\n' ||
+           c == '\t' || c == '\r' ;
+}
+
+b32 psh__is_bs(byte c) {
+    return c == '\\';
+}
+
+b32 psh__is_ws_or_bs(byte c) {
+    return psh__is_ws(c) || psh__is_bs(c);
+}
+
+b32 psh__is_alpha(byte c) {
+    return ('a' <= c && c <= 'z') ||
+           ('A' <= c && c <= 'Z') ;
+}
+
+b32 psh__is_num(byte c) {
+    return '0' <= c && c <= '9';
+}
+
+b32 psh__is_path_symbol(byte c) {
+    return c == '.' || c == '/' || 
+           c == '_' || c == '-' ;
+}
+
+b32 psh__is_path(byte c) {
+    return psh__is_path_symbol(c) ||
+           psh__is_alpha(c)       ||
+           psh__is_num(c)         ;
+}
+// unity build IMPL END
+
 #endif // PSH_CORE_IMPL
 
 #ifdef PSH_CORE_NO_PREFIX
 
-#define s8                  psh_s8
-#define countof             psh_countof
-#define lenof               psh_lenof
+#define s8                      psh_s8
+#define countof                 psh_countof
+#define lenof                   psh_lenof
 
-#define list_def              psh_list_def
-#define list_reserve          psh_list_reserve
-#define list_append           psh_list_append
-#define list_free             psh_list_free
-#define list_append_many      psh_list_append_many
-#define list_foreach          psh_list_foreach
-#define list_resize           psh_list_resize
-#define list_clear            psh_list_clear
-#define list_last             psh_list_last
-#define list_pop              psh_list_pop
-#define list_remove_unordered psh_list_remove_unordered
+#define list_def                psh_list_def
+#define list_reserve            psh_list_reserve
+#define list_append             psh_list_append
+#define list_free               psh_list_free
+#define list_append_many        psh_list_append_many
+#define list_foreach            psh_list_foreach
+#define list_resize             psh_list_resize
+#define list_clear              psh_list_clear
+#define list_last               psh_list_last
+#define list_pop                psh_list_pop
+#define list_remove_unordered   psh_list_remove_unordered
 
-#define return_defer        psh_return_defer
-#define UNREACHABLE         PSH_UNREACHABLE
-#define UNUSED              PSH_UNUSED
-#define container_of        psh_container_of
+#define return_defer            psh_return_defer
+#define UNREACHABLE             PSH_UNREACHABLE
+#define UNUSED                  PSH_UNUSED
+#define container_of            psh_container_of
 
-typedef Psh_Log_Level       Log_Level;
-#define INFO                PSH_INFO
-#define WARNING             PSH_WARNING
-#define ERROR               PSH_ERROR
-#define NO_LOGS             PSH_NO_LOGS
-#define logger              psh_logger
+typedef Psh_Log_Level           Log_Level;
+#define INFO                    PSH_INFO
+#define WARNING                 PSH_WARNING
+#define ERROR                   PSH_ERROR
+#define NO_LOGS                 PSH_NO_LOGS
+#define logger                  psh_logger
 
-typedef Psh_Proc            Proc;
-#define INVALID_PROC        PSH_INVALID_PROC
-typedef Psh_Procs           Procs;
+typedef Psh_Proc                Proc;
+#define INVALID_PROC            PSH_INVALID_PROC
+typedef Psh_Procs               Procs;
 
-typedef Psh_Fd              Fd;
-#define INVALID_FD          PSH_INVALID_FD
-#define fd_open             psh_fd_open
-#define fd_openr            psh_fd_openr
-#define fd_openw            psh_fd_openw
-#define fd_opena            psh_fd_opena
-#define fd_close            psh_fd_close
-#define fd_close_safe       psh_fd_close_safe
-#define fd_not_default      psh_fd_not_default
+typedef Psh_Fd                  Fd;
+#define INVALID_FD              PSH_INVALID_FD
+#define fd_open                 psh_fd_open
+#define fd_openr                psh_fd_openr
+#define fd_openw                psh_fd_openw
+#define fd_opena                psh_fd_opena
+#define fd_close                psh_fd_close
+#define fd_close_safe           psh_fd_close_safe
+#define fd_not_default          psh_fd_not_default
 
-typedef Psh_Cmd             Cmd;
-typedef Psh_Cmd_Opt         Cmd_Opt;
-#define cmd_append          psh_cmd_append
-#define cmd_run             psh_cmd_run
-#define cmd_run_opt         psh_cmd_run_opt
-#define procs_block         psh_procs_block
+typedef Psh_Cmd                 Cmd;
+typedef Psh_Cmd_Opt             Cmd_Opt;
+#define cmd_append              psh_cmd_append
+#define cmd_run                 psh_cmd_run
+#define cmd_run_opt             psh_cmd_run_opt
+#define procs_block             psh_procs_block
 
-typedef Psh_Pipeline_Opt    Pipeline_Opt;
-typedef Psh_Pipeline        Pipeline;
-#define pipeline_chain      psh_pipeline_chain
-#define pipeline_chain_opt  psh_pipeline_chain_opt
-#define pipeline_end        psh_pipeline_end
-#define pipeline            psh_pipeline
+typedef Psh_Pipeline_Opt        Pipeline_Opt;
+typedef Psh_Pipeline            Pipeline;
+#define pipeline_chain          psh_pipeline_chain
+#define pipeline_chain_opt      psh_pipeline_chain_opt
+#define pipeline_end            psh_pipeline_end
+#define pipeline                psh_pipeline
 
-#define pipe_open           psh_pipe_open
-typedef Psh_Unix_Pipe       Unix_Pipe;
-#define fd_read             psh_fd_read
-#define fd_read_opt         psh_fd_read_opt
-typedef Psh_Fd_Reader       Fd_Reader;
-typedef Psh_Fd_Reader_Opt   Fd_Reader_Opt;
-#define fd_readers_join     psh_fd_readers_join
+#define pipe_open               psh_pipe_open
+typedef Psh_Unix_Pipe           Unix_Pipe;
+#define fd_read                 psh_fd_read
+#define fd_read_opt             psh_fd_read_opt
+typedef Psh_Fd_Reader           Fd_Reader;
+typedef Psh_Fd_Reader_Opt       Fd_Reader_Opt;
+#define fd_readers_join         psh_fd_readers_join
 
-typedef Psh_String_Builder  String_Builder;
-typedef Psh_Sb              Sb;
-#define sb_append           psh_sb_append
-#define sb_append_buf       psh_sb_append_buf
-#define sb_append_cstr      psh_sb_append_cstr
-#define sb_append_null      psh_sb_append_null
-#define sb_arg              psh_sb_arg
+typedef Psh_String_Builder      String_Builder;
+typedef Psh_Sb                  Sb;
+#define sb_append               psh_sb_append
+#define sb_append_buf           psh_sb_append_buf
+#define sb_append_cstr          psh_sb_append_cstr
+#define sb_append_null          psh_sb_append_null
+#define sb_arg                  psh_sb_arg
+
+#define rebuild_unity           psh_rebuild_unity
+#define REBUILD_UNITY           PSH_REBUILD_UNITY
+#define rebuild_unity_auto      psh_rebuild_unity_auto
+#define REBUILD_UNITY_AUTO      PSH_REBUILD_UNITY_AUTO
+#define shift                   psh_shift
+#define CC                      PSH_CC
+#define CC_FLAGS                PSH_CC_FLAGS
+#define CC_MORE_FLAGS           PSH_CC_MORE_FLAGS
+#define CC_CMD                  PSH_CC_CMD
 
 #endif // PSH_CORE_NO_PREFIX
