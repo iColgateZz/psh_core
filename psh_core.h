@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/poll.h>
+#include <stdalign.h>
 
 // Data types START
 
@@ -301,6 +302,63 @@ b32 psh_fd_read_opt(Psh_Fd_Reader *r, Psh_Fd_Reader_Opt opt);
 b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount);
 // reader END
 
+// arena START
+
+#define KB(x) ((usize)(x) << 10)
+#define MB(x) ((usize)(x) << 20)
+#define GB(x) ((usize)(x) << 30)
+
+//TODO: namespace?
+typedef struct {
+    byte* base_ptr;         // Start of the reservation
+    usize reserved_size;    // Total size (e.g., 1GB)
+    usize committed_size;   // Currently committed memory
+    usize current_offset;   // Bump pointer
+    usize page_size;        // size of one memory page
+} Arena;
+
+typedef usize ArenaSP;
+
+Arena arena_init(usize reserve_size);
+void arena_destroy(Arena arena);
+void *arena_push_(Arena *arena, usize size, usize align, usize n);
+void arena_pop(Arena *arena, usize size);
+ArenaSP arena_savepoint(Arena *arena);
+void arena_restore(Arena *arena, ArenaSP save_point);
+void arena_clear(Arena *arena);
+
+#define arena_push(...)                pushx_(__VA_ARGS__, push2_, push1_)(__VA_ARGS__)
+#define pushx_(a, b, c, d, ...)        d
+#define push1_(a_ptr, t)               arena_push_(a_ptr, sizeof(t), alignof(t), 1)
+#define push2_(a_ptr, t, n)            arena_push_(a_ptr, sizeof(t), alignof(t), n)
+
+typedef struct {
+    Arena *arena;
+    ArenaSP sp;
+} Scratch;
+
+Scratch scratch_begin(Arena *arena);
+void scratch_end(Scratch scratch);
+
+#ifndef ARENA_TEMP_NUM
+    #define ARENA_TEMP_NUM 2
+#endif
+
+#ifndef ARENA_SCRATCH_SIZE
+    #define ARENA_SCRATCH_SIZE MB(8)
+#endif
+
+typedef struct {
+    Arena temp_arenas[ARENA_TEMP_NUM];
+} ThreadCtx;
+
+_Thread_local static ThreadCtx thread_ctx = {0};
+
+Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
+#define scratch_get(...) scratch_get_( \
+        ((Arena *[]){__VA_ARGS__}), (sizeof((Arena *[]){__VA_ARGS__}) / sizeof(Arena *)))
+// arena END
+
 #endif // PSH_CORE_INCLUDE
 
 #ifdef PSH_CORE_IMPL
@@ -309,6 +367,7 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount);
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
+#include <sys/mman.h>
 
 // psh_logger impl START
 
@@ -801,6 +860,112 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount) {
 }
 
 // reader IMPL END
+
+// arena IMPL START
+
+// Sources of Info:
+// https://andreleite.com/posts/2025/nstl/virtual-memory-arena-allocator
+// https://www.rfleury.com/p/untangling-lifetimes-the-arena-allocator
+
+#define ALIGN_UP_POW2(n, p) (((usize)(n) + ((usize)(p) - 1)) & (~((usize)(p) - 1)))
+
+usize get_page_size(void) 
+{ return sysconf(_SC_PAGESIZE); }
+
+Arena arena_init(usize reserve_size) {
+    usize PAGE_SIZE = get_page_size();
+
+    // Align reservation up to the nearest page size
+    reserve_size = ALIGN_UP_POW2(reserve_size, PAGE_SIZE);
+    void* block = mmap(NULL, reserve_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    PSH_ASSERT(block != MAP_FAILED);
+
+    return (Arena) {
+        .base_ptr = block,
+        .reserved_size = reserve_size,
+        .page_size = PAGE_SIZE
+    };
+}
+
+void *arena_push_(Arena *arena, usize size, usize align, usize n) {
+    usize offset = ALIGN_UP_POW2(arena->current_offset, align);
+    if (n != 0 && size > (arena->reserved_size - offset) / n) {
+        return NULL;
+    }
+
+    usize new_offset = offset + size * n;
+    if (new_offset > arena->reserved_size) {
+        return NULL;
+    }
+
+    if (new_offset > arena->committed_size) {
+        // Align the required commit size up to the nearest page
+        usize new_commit_target = ALIGN_UP_POW2(new_offset, arena->page_size);
+
+        if (new_commit_target > arena->reserved_size) {
+            new_commit_target = arena->reserved_size;
+        }
+
+        usize usizeo_commit = new_commit_target - arena->committed_size;
+        void *commit_start_addr = arena->base_ptr + arena->committed_size;
+
+        if (mprotect(commit_start_addr, usizeo_commit, PROT_READ | PROT_WRITE) != 0) {
+            return NULL;
+        }
+
+        arena->committed_size = new_commit_target;
+    }
+
+    void* memory = arena->base_ptr + offset;
+    arena->current_offset = new_offset;
+
+    return memory;
+}
+
+void arena_destroy(Arena arena) 
+{ munmap(arena.base_ptr, arena.reserved_size); }
+
+void arena_pop(Arena *arena, usize size)
+{ arena->current_offset -= size; }
+
+ArenaSP arena_savepoint(Arena *arena)
+{ return arena->current_offset; }
+
+void arena_restore(Arena *arena, ArenaSP savepoint)
+{ arena->current_offset = savepoint; }
+
+void arena_clear(Arena *arena)
+{ arena_restore(arena, 0); }
+
+Scratch scratch_begin(Arena *arena)
+{ return (Scratch) { .arena = arena, .sp = arena_savepoint(arena)}; }
+
+void scratch_end(Scratch scratch)
+{ arena_restore(scratch.arena, scratch.sp); }
+
+Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num) {
+    for (usize temp_idx = 0; temp_idx < ARENA_TEMP_NUM; ++temp_idx) {
+        Arena *temp_arena = &thread_ctx.temp_arenas[temp_idx];
+
+        if (temp_arena->reserved_size == 0)
+            *temp_arena = arena_init(ARENA_SCRATCH_SIZE);
+
+        b32 conflict = false;
+        for (usize conflict_idx = 0; conflict_idx < conflict_num; ++conflict_idx) {
+            Arena *conflict_arena = conflicting_permanent_arenas[conflict_idx];
+
+            if (temp_arena == conflict_arena) {
+                conflict = true;
+                break;
+            }
+        }
+
+        if (!conflict) return scratch_begin(temp_arena);
+    }
+
+    PSH_UNREACHABLE("scratch arena not found");
+}
+// arena IMPL END
 
 #endif // PSH_CORE_IMPL
 
