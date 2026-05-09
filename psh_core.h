@@ -308,7 +308,9 @@ b32 psh_fd_readers_join(Psh_Fd_Reader r[], usize rcount);
 #define MB(x) ((usize)(x) << 20)
 #define GB(x) ((usize)(x) << 30)
 
-//TODO: namespace?
+// Default to 1 gb if arena is zero initialized
+#define ARENA_RESERVE_SIZE GB(1)
+
 typedef struct {
     byte* base_ptr;         // Start of the reservation
     usize reserved_size;    // Total size (e.g., 1GB)
@@ -913,7 +915,7 @@ Arena arena_init(usize reserve_size) {
     // Align reservation up to the nearest page size
     reserve_size = ALIGN_UP_POW2(reserve_size, PAGE_SIZE);
     void* block = mmap(NULL, reserve_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    PSH_ASSERT(block != MAP_FAILED);
+    PSH_ASSERT(block != MAP_FAILED && "Buy more RAM lol");
 
     return (Arena) {
         .base_ptr = block,
@@ -923,6 +925,10 @@ Arena arena_init(usize reserve_size) {
 }
 
 void *arena_push_(Arena *arena, usize size, usize align, usize n) {
+    if (arena->base_ptr == NULL) {
+        *arena = arena_init(ARENA_RESERVE_SIZE);
+    }
+
     usize offset = ALIGN_UP_POW2(arena->current_offset, align);
     if (n != 0 && size > (arena->reserved_size - offset) / n) {
         return NULL;
@@ -941,10 +947,10 @@ void *arena_push_(Arena *arena, usize size, usize align, usize n) {
             new_commit_target = arena->reserved_size;
         }
 
-        usize usizeo_commit = new_commit_target - arena->committed_size;
+        usize commit_size = new_commit_target - arena->committed_size;
         void *commit_start_addr = arena->base_ptr + arena->committed_size;
 
-        if (mprotect(commit_start_addr, usizeo_commit, PROT_READ | PROT_WRITE) != 0) {
+        if (mprotect(commit_start_addr, commit_size, PROT_READ | PROT_WRITE) != 0) {
             return NULL;
         }
 
