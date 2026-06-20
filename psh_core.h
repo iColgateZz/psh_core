@@ -37,7 +37,7 @@ typedef size_t      usize;
 
 typedef struct {
     byte *s;
-    usize len;
+    isize len;
 } psh_s8;
 
 #define psh_countof(x)                (usize)(sizeof(x) / sizeof(*(x)))
@@ -69,14 +69,22 @@ typedef struct {
 
 #define PSH_LIST_INIT_CAP 256
 
-#define psh_list_def(Type)    \
-    struct Type ## List {   \
-        Type *items;        \
-        usize count;        \
-        usize capacity;     \
+#define psh_list_def(Type)      \
+    struct Type ## List {       \
+        Type *items;            \
+        isize count;            \
+        isize capacity;         \
     };
 
 #define List(T) struct T ## List
+
+#define psh_slice_def(Type)     \
+    struct Type ## Slice {      \
+        Type *items;            \
+        isize count;            \
+    };
+
+#define Slice(T) struct T ## Slice
 
 #define psh_list_reserve(da, expected_capacity)                                                   \
     do {                                                                                        \
@@ -1172,6 +1180,8 @@ b32 psh__is_path(byte c) {
 #define list_last               psh_list_last
 #define list_pop                psh_list_pop
 #define list_remove_unordered   psh_list_remove_unordered
+
+#define slice_def               psh_slice_def
 
 #define return_defer            psh_return_defer
 #define UNREACHABLE             PSH_UNREACHABLE
