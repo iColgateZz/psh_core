@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/poll.h>
 #include <stdalign.h>
 
 // Data types START
@@ -448,6 +447,7 @@ static Psh_CodePoint PSH_UTF8_REPLACEMENT = {
 #include <time.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/poll.h>
 
 // psh_logger impl START
 
