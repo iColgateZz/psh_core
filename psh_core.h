@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <stdalign.h>
 
+//TODO: add platform-agnostic wrappers
+
 // Data types START
 
 typedef uint8_t     u8;
