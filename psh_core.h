@@ -394,7 +394,7 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
 // unity build START
 
 typedef i32 psh_ternary;
-#define err -1
+#define psh_err -1
 
 void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count);
 #define PSH_REBUILD_UNITY(argc, argv, ...)                                      \
@@ -1078,7 +1078,7 @@ void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count)
     byte *source = src[0];
 
     psh_ternary needs_rebuild = psh__needs_rebuild(executable, src, src_count);
-    if (needs_rebuild == err) exit(EXIT_FAILURE);
+    if (needs_rebuild == psh_err) exit(EXIT_FAILURE);
     if (needs_rebuild == false) return;
 
     Psh_Cmd cmd = {0};
@@ -1100,7 +1100,7 @@ psh_ternary psh__needs_rebuild(byte *executable, byte *src[], usize src_count) {
         if (errno == ENOENT) return true;
 
         psh_logger(PSH_ERROR, "could not get info about executable %s: %s", executable, strerror(errno));
-        return err;
+        return psh_err;
     }
     u32 exec_mod_time = statbuf.st_mtime;
 
@@ -1108,7 +1108,7 @@ psh_ternary psh__needs_rebuild(byte *executable, byte *src[], usize src_count) {
         byte *source = src[i];
         if (stat(source, &statbuf) < 0) {
             psh_logger(PSH_ERROR, "could not get info about source %s: %s", source, strerror(errno));
-            return err;
+            return psh_err;
         }
 
         u32 source_mod_time = statbuf.st_mtime;
