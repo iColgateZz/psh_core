@@ -343,10 +343,18 @@ ArenaSP arena_savepoint(Arena *arena);
 void arena_restore(Arena *arena, ArenaSP save_point);
 void arena_clear(Arena *arena);
 
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+    #define alignof_type(T) _Alignof(T)
+#else
+    // offsetof may also be used?
+    #define offsetof_type(T, member) (isize)(&((T *)0)->member)
+    #define alignof_type(T)  offsetof_type(struct { char byte; T value; }, value)
+#endif
+
 #define arena_push(...)                pushx_(__VA_ARGS__, push2_, push1_)(__VA_ARGS__)
 #define pushx_(a, b, c, d, ...)        d
-#define push1_(a_ptr, t)               arena_push_(a_ptr, sizeof(t), alignof(t), 1)
-#define push2_(a_ptr, t, n)            arena_push_(a_ptr, sizeof(t), alignof(t), n)
+#define push1_(a_ptr, t)               arena_push_(a_ptr, sizeof(t), alignof_type(t), 1)
+#define push2_(a_ptr, t, n)            arena_push_(a_ptr, sizeof(t), alignof_type(t), n)
 
 typedef struct {
     Arena *arena;
@@ -368,7 +376,15 @@ typedef struct {
     Arena temp_arenas[ARENA_TEMP_NUM];
 } ThreadCtx;
 
-_Thread_local static ThreadCtx thread_ctx = {0};
+#ifndef PSH_THREAD_CTX_MOD
+    #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+        #define PSH_THREAD_CTX_MOD _Thread_local
+    #else
+        #define PSH_THREAD_CTX_MOD
+    #endif
+#endif
+
+PSH_THREAD_CTX_MOD static ThreadCtx thread_ctx = {0};
 
 Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
 #define scratch_get(...) scratch_get_( \
