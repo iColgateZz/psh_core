@@ -141,6 +141,195 @@ typedef struct {
     } while(0)
 // da END
 
+// hash map START
+
+#ifndef PSH_HASH_MAP_REALLOC
+    #define PSH_HASH_MAP_REALLOC realloc
+#endif
+
+#ifndef PSH_HASH_MAP_FREE
+    #define PSH_HASH_MAP_FREE free
+#endif
+
+#ifndef PSH_HASH_MAP_INIT_CAP
+    #define PSH_HASH_MAP_INIT_CAP 256
+#endif
+
+#ifndef PSH_HASH_MAP_MAX_LOAD_PERCENT
+    #define PSH_HASH_MAP_MAX_LOAD_PERCENT 70
+#endif
+
+typedef enum {
+    PSH_HASH_MAP_ENTRY_EMPTY,
+    PSH_HASH_MAP_ENTRY_OCCUPIED,
+    PSH_HASH_MAP_ENTRY_DELETED,
+} Psh_HashMapEntryState;
+
+typedef struct {
+    u64 hash;
+    u8 state;
+} Psh_HashMapEntryHeader;
+
+#define Psh_HashMap(Key, Value)      struct Psh_ ## Key ## _ ## Value ## _HashMap
+#define Psh_HashMapEntry(Key, Value) struct Psh_ ## Key ## _ ## Value ## _HashMapEntry
+
+#define psh_hash_map_def(Key, Value)        \
+    Psh_HashMapEntry(Key, Value) {              \
+        Psh_HashMapEntryHeader header;      \
+        Key key;                            \
+        Value value;                        \
+    };                                      \
+    Psh_HashMap(Key, Value) {                   \
+        Psh_HashMapEntry(Key, Value) *items;    \
+        isize count;                        \
+        isize deleted_count;                \
+        isize capacity;                     \
+        b32 fixed_capacity;                 \
+        u64 (*key_hash)(Key key);           \
+        b32 (*key_equal)(Key a, Key b);     \
+    };
+
+u64 psh_hash_bytes(void *data, usize size);
+void *psh__hash_map_resize(void *items, isize old_capacity, isize new_capacity, usize entry_size);
+
+static inline u64 psh__hash_map_mix(u64 hash) {
+    hash ^= hash >> 30;
+    hash *= UINT64_C(0xbf58476d1ce4e5b9);
+    hash ^= hash >> 27;
+    hash *= UINT64_C(0x94d049bb133111eb);
+    hash ^= hash >> 31;
+    return hash;
+}
+
+static inline isize psh__hash_map_index(u64 hash, isize capacity) {
+    return (isize)(hash & (u64)(capacity - 1));
+}
+
+static inline isize psh__hash_map_step(u64 hash, isize capacity) {
+    return (isize)(((hash >> 32) | 1) & (u64)(capacity - 1));
+}
+
+// memory_count must be a power of two. This storage is never resized or freed.
+#define psh_hash_map_init_with_memory(map, memory, memory_count, hash_function, equal_function) do { \
+        (map)->count = 0;                                                                            \
+        (map)->deleted_count = 0;                                                                    \
+        (map)->items = (memory);                                                                     \
+        (map)->capacity = (memory_count);                                                            \
+        (map)->fixed_capacity = true;                                                                \
+        (map)->key_hash = (hash_function);                                                           \
+        (map)->key_equal = (equal_function);                                                         \
+    } while (0)
+
+#define psh_hash_map_resize(map, requested_capacity) do {                                \
+        PSH_ASSERT(!(map)->fixed_capacity && "Cannot resize a fixed-capacity hash map"); \
+        if ((map)->capacity == 0) (map)->capacity = PSH_HASH_MAP_INIT_CAP;               \
+        isize psh__new_capacity = (map)->capacity;                                       \
+        while (psh__new_capacity < (requested_capacity)) {                               \
+            psh__new_capacity *= 2;                                                      \
+        }                                                                                \
+        (map)->items = psh__hash_map_resize(                                             \
+            (map)->items, (map)->capacity, psh__new_capacity, sizeof(*(map)->items)      \
+        );                                                                               \
+        (map)->capacity = psh__new_capacity;                                             \
+        (map)->deleted_count = 0;                                                        \
+    } while (0)
+
+#define psh_hash_map_clear(map) do {                                        \
+        memset((map)->items, 0, (map)->capacity * sizeof(*(map)->items));   \
+        (map)->count = 0;                                                   \
+        (map)->deleted_count = 0;                                           \
+    } while (0)
+
+// inserting an existing key replaces its value
+#define psh_hash_map_insert(map, new_key, new_value) do {                                      \
+        if ((map)->capacity == 0) psh_hash_map_resize((map), PSH_HASH_MAP_INIT_CAP);            \
+        if (!(map)->fixed_capacity &&                                                         \
+            ((map)->count + (map)->deleted_count + 1) * 100 >                                  \
+            (map)->capacity * PSH_HASH_MAP_MAX_LOAD_PERCENT)                                    \
+        {                                                                                      \
+            isize psh__resize_capacity =                                                       \
+                ((map)->count + 1) * 100 > (map)->capacity * PSH_HASH_MAP_MAX_LOAD_PERCENT     \
+                    ? (map)->capacity * 2                                                      \
+                    : (map)->capacity;                                                         \
+            psh_hash_map_resize((map), psh__resize_capacity);                                  \
+        }                                                                                      \
+        u64 psh__hash = psh__hash_map_mix((map)->key_hash(new_key));                           \
+        isize psh__index = psh__hash_map_index(psh__hash, (map)->capacity);           \
+        isize psh__step = psh__hash_map_step(psh__hash, (map)->capacity);             \
+        isize psh__target = -1;                                                                \
+        isize psh__increment_count = 1;                                                             \
+        for (isize psh__probe = 0; psh__probe < (map)->capacity; ++psh__probe) {                \
+            u8 psh__state = (map)->items[psh__index].header.state;                             \
+            if (psh__state == PSH_HASH_MAP_ENTRY_OCCUPIED) {                                   \
+                if ((map)->items[psh__index].header.hash == psh__hash &&                       \
+                    (map)->key_equal((map)->items[psh__index].key, (new_key))) {                 \
+                    psh__target = psh__index;                                                   \
+                    psh__increment_count = 0;                                                      \
+                    break;                                                                     \
+                }                                                                              \
+            } else {                                                                           \
+                psh__target = psh__index;                                                       \
+                break;                                                                         \
+            }                                                                                  \
+            psh__index = (psh__index + psh__step) & ((map)->capacity - 1);                      \
+        }                                                                                      \
+        PSH_ASSERT(psh__target >= 0 && "Hash map capacity exhausted");                        \
+        if ((map)->items[psh__target].header.state == PSH_HASH_MAP_ENTRY_DELETED) {         \
+            (map)->deleted_count--;                                                        \
+        }                                                                                  \
+        (map)->items[psh__target].header.hash = psh__hash;                                 \
+        (map)->items[psh__target].header.state = PSH_HASH_MAP_ENTRY_OCCUPIED;               \
+        (map)->items[psh__target].key = (new_key);                                         \
+        (map)->items[psh__target].value = (new_value);                                     \
+        (map)->count += psh__increment_count;                                                 \
+    } while (0)
+
+#define psh_hash_map_get(map, search_key, result_pointer) do {                    \
+        *(result_pointer) = NULL;                                                 \
+        if ((map)->capacity <= 0) break;                                          \
+        u64 psh__hash = psh__hash_map_mix((map)->key_hash(search_key));           \
+        isize psh__index = psh__hash_map_index(psh__hash, (map)->capacity);       \
+        isize psh__step = psh__hash_map_step(psh__hash, (map)->capacity);         \
+        for (isize psh__probe = 0; psh__probe < (map)->capacity; ++psh__probe) {  \
+            u8 psh__state = (map)->items[psh__index].header.state;                \
+            if (psh__state == PSH_HASH_MAP_ENTRY_EMPTY) break;                    \
+            if (psh__state == PSH_HASH_MAP_ENTRY_OCCUPIED &&                      \
+                (map)->items[psh__index].header.hash == psh__hash &&              \
+                (map)->key_equal((map)->items[psh__index].key, (search_key))) {   \
+                *(result_pointer) = &(map)->items[psh__index].value;              \
+                break;                                                            \
+            }                                                                     \
+            psh__index = (psh__index + psh__step) & ((map)->capacity - 1);        \
+        }                                                                         \
+    } while (0)
+
+#define psh_hash_map_remove(map, search_key) do {                                       \
+        if ((map)->capacity <= 0) break;                                                \
+        u64 psh__hash = psh__hash_map_mix((map)->key_hash(search_key));                 \
+        isize psh__index = psh__hash_map_index(psh__hash, (map)->capacity);             \
+        isize psh__step = psh__hash_map_step(psh__hash, (map)->capacity);               \
+        for (isize psh__probe = 0; psh__probe < (map)->capacity; ++psh__probe) {        \
+            u8 psh__state = (map)->items[psh__index].header.state;                      \
+            if (psh__state == PSH_HASH_MAP_ENTRY_EMPTY) break;                          \
+            if (psh__state == PSH_HASH_MAP_ENTRY_OCCUPIED &&                            \
+                (map)->items[psh__index].header.hash == psh__hash &&                    \
+                (map)->key_equal((map)->items[psh__index].key, (search_key)))           \
+            {                                                                           \
+                (map)->items[psh__index].header.state = PSH_HASH_MAP_ENTRY_DELETED;     \
+                (map)->count--;                                                         \
+                (map)->deleted_count++;                                                 \
+                if ((map)->count == 0 && (map)->deleted_count * 10 >= (map)->capacity)  \
+                    psh_hash_map_clear(map);                                            \
+                break;                                                                  \
+            }                                                                           \
+            psh__index = (psh__index + psh__step) & ((map)->capacity - 1);              \
+        }                                                                               \
+    } while (0)
+
+#define psh_hash_map_free(map) do { if (!(map)->fixed_capacity) PSH_HASH_MAP_FREE((map)->items); } while(0)
+
+// hash map END
+
 // macros START
 
 #define psh_return_defer(value) do { result = (value); goto defer; } while(0)
@@ -466,6 +655,50 @@ static Psh_CodePoint PSH_UTF8_REPLACEMENT = {
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/poll.h>
+
+// hash map IMPL START
+
+u64 psh_hash_bytes(void *data, usize size) {
+    byte *bytes = data;
+    u64 hash = UINT64_C(14695981039346656037);
+    for (usize i = 0; i < size; ++i) {
+        hash ^= (u8)bytes[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+void *psh__hash_map_resize(void *items, isize old_capacity, isize new_capacity, usize entry_size) {
+    byte *new_items = PSH_HASH_MAP_REALLOC(NULL, (usize)new_capacity * entry_size);
+    PSH_ASSERT(new_items != NULL && "Could not allocate hash map");
+    memset(new_items, 0, (usize)new_capacity * entry_size);
+
+    byte *old_items = items;
+    for (isize i = 0; i < old_capacity; ++i) {
+        byte *old_entry = old_items + (usize)i * entry_size;
+        Psh_HashMapEntryHeader header;
+        memcpy(&header, old_entry, sizeof(header));
+        if (header.state != PSH_HASH_MAP_ENTRY_OCCUPIED) continue;
+
+        isize index = psh__hash_map_index(header.hash, new_capacity);
+        isize step = psh__hash_map_step(header.hash, new_capacity);
+        for (isize probe = 0; probe < new_capacity; ++probe) {
+            byte *new_entry = new_items + (usize)index * entry_size;
+            Psh_HashMapEntryHeader new_header;
+            memcpy(&new_header, new_entry, sizeof(new_header));
+            if (new_header.state == PSH_HASH_MAP_ENTRY_EMPTY) {
+                memcpy(new_entry, old_entry, entry_size);
+                break;
+            }
+            index = (index + step) & (new_capacity - 1);
+        }
+    }
+
+    PSH_HASH_MAP_FREE(items);
+    return new_items;
+}
+
+// hash map IMPL END
 
 // psh_logger impl START
 
@@ -1345,6 +1578,18 @@ u8 psh_unicode_width(Psh_Unicode ch) {
 #define list_last               psh_list_last
 #define list_pop                psh_list_pop
 #define list_remove_unordered   psh_list_remove_unordered
+
+#define HashMap                     Psh_HashMap
+#define HashMapEntry                Psh_HashMapEntry
+#define hash_map_def                psh_hash_map_def
+#define hash_map_init_with_memory   psh_hash_map_init_with_memory
+#define hash_map_resize             psh_hash_map_resize
+#define hash_map_insert             psh_hash_map_insert
+#define hash_map_get                psh_hash_map_get
+#define hash_map_remove             psh_hash_map_remove
+#define hash_map_clear              psh_hash_map_clear
+#define hash_map_free               psh_hash_map_free
+#define hash_bytes                  psh_hash_bytes
 
 #define slice_def               psh_slice_def
 
