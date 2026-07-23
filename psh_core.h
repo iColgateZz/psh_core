@@ -357,6 +357,11 @@ static inline isize psh__hash_map_step(u64 hash, isize capacity) {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 // macros END
 
+// time START
+
+f64 psh_time_now(void);
+// time END
+
 // psh_logger START
 
 typedef enum {
@@ -660,6 +665,18 @@ static Psh_CodePoint PSH_UTF8_REPLACEMENT = {
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/poll.h>
+
+// time IMPL START
+
+f64 psh_time_now(void) {
+    struct timespec current_time = {0};
+    if (clock_gettime(CLOCK_MONOTONIC, &current_time) != 0) {
+        PSH_ASSERT(false && "Could not read the monotonic clock");
+        return 0;
+    }
+    return (f64)current_time.tv_sec + (f64)current_time.tv_nsec / 1000000000.0;
+}
+// time IMPL END
 
 // hash map IMPL START
 
@@ -1603,6 +1620,8 @@ u8 psh_unicode_width(Psh_Unicode ch) {
 #define UNREACHABLE             PSH_UNREACHABLE
 #define UNUSED                  PSH_UNUSED
 #define container_of            psh_container_of
+
+#define time_now                psh_time_now
 
 typedef Psh_Log_Level           Log_Level;
 #define INFO                    PSH_INFO
