@@ -223,13 +223,15 @@ static inline isize psh__hash_map_step(u64 hash, isize capacity) {
 
 #define psh_hash_map_resize(map, requested_capacity) do {                                \
         PSH_ASSERT(!(map)->fixed_capacity && "Cannot resize a fixed-capacity hash map"); \
-        if ((map)->capacity == 0) (map)->capacity = PSH_HASH_MAP_INIT_CAP;               \
-        isize psh__new_capacity = (map)->capacity;                                       \
+        isize psh__old_capacity = (map)->capacity;                                       \
+        isize psh__new_capacity = psh__old_capacity > 0                                  \
+            ? psh__old_capacity                                                         \
+            : PSH_HASH_MAP_INIT_CAP;                                                     \
         while (psh__new_capacity < (requested_capacity)) {                               \
             psh__new_capacity *= 2;                                                      \
         }                                                                                \
         (map)->items = psh__hash_map_resize(                                             \
-            (map)->items, (map)->capacity, psh__new_capacity, sizeof(*(map)->items)      \
+            (map)->items, psh__old_capacity, psh__new_capacity, sizeof(*(map)->items)    \
         );                                                                               \
         (map)->capacity = psh__new_capacity;                                             \
         (map)->deleted_count = 0;                                                        \
