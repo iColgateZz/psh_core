@@ -359,7 +359,7 @@ static inline isize psh__hash_map_step(u64 hash, isize capacity) {
 
 // time START
 
-f64 psh_time_now(void);
+u64 psh_time_now_ns(void);
 // time END
 
 // psh_logger START
@@ -668,13 +668,10 @@ static Psh_CodePoint PSH_UTF8_REPLACEMENT = {
 
 // time IMPL START
 
-f64 psh_time_now(void) {
+u64 psh_time_now_ns(void) {
     struct timespec current_time = {0};
-    if (clock_gettime(CLOCK_MONOTONIC, &current_time) != 0) {
-        PSH_ASSERT(false && "Could not read the monotonic clock");
-        return 0;
-    }
-    return (f64)current_time.tv_sec + (f64)current_time.tv_nsec / 1000000000.0;
+    clock_gettime(CLOCK_MONOTONIC, &current_time);
+    return current_time.tv_sec * 1000000000 + current_time.tv_nsec;
 }
 // time IMPL END
 
@@ -1621,7 +1618,7 @@ u8 psh_unicode_width(Psh_Unicode ch) {
 #define UNUSED                  PSH_UNUSED
 #define container_of            psh_container_of
 
-#define time_now                psh_time_now
+#define time_now_ns             psh_time_now_ns
 
 typedef Psh_Log_Level           Log_Level;
 #define INFO                    PSH_INFO
