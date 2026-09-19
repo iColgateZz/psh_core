@@ -138,7 +138,7 @@ i32 example_redirect_stderr_to_stdout() {
         .fderr = outpipe.write_fd
     )) return 1;
 
-    close(errpipe.write_fd);
+    fd_close(errpipe.write_fd);
     if (!fd_readers_join(readers, rcount)) return 1;
 
     printf("From stdout: %.*s\n", sb_arg(readers[0].store));
