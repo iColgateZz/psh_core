@@ -606,7 +606,7 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
         ((Arena *[]){NULL, __VA_ARGS__}), (sizeof((Arena *[]){NULL, __VA_ARGS__}) / sizeof(Arena *)))
 // arena END
 
-// unity build START
+// build START
 
 typedef i32 psh_ternary;
 #define psh_err -1
@@ -631,14 +631,31 @@ void psh_rebuild_unity_auto(i32 argc, byte *argv[argc], byte *source);
 #endif
 
 #ifndef PSH_CC_MORE_FLAGS
-    #define PSH_CC_MORE_FLAGS ""
+    #define PSH_CC_MORE_FLAGS "-std=c99"
 #endif
 
 #ifndef PSH_CC_CMD
     #define PSH_CC_CMD(target, source1, ...) \
             PSH_CC, PSH_CC_FLAGS, PSH_CC_MORE_FLAGS, "-o", target, source1, __VA_ARGS__
 #endif
-// unity build END
+
+// True if output is missing or older than a dependency, false otherwise, or psh_err on error.
+psh_ternary psh_needs_rebuild(byte *output, byte *dependencies[], usize dependency_count);
+
+typedef struct {
+    byte *build_dir;
+    byte *output;
+    byte **sources;
+    usize source_count;
+    byte **flags;
+    usize flag_count;
+    u8 max_procs;
+} Psh_C_Build;
+
+// Discovers the source's header dependencies with the compiler, then calls psh_needs_rebuild.
+psh_ternary psh_c_build_object_needs_rebuild(Psh_C_Build *build, byte *source, byte *object);
+b32 psh_c_build_run(Psh_C_Build *build);
+// build END
 
 #endif // PSH_CORE_INCLUDE
 
@@ -946,10 +963,9 @@ static inline b32 psh__block_unwanted_procs(Psh_Procs *async, u8 max_procs) {
     while (async->count >= max_procs) {
         for (usize i = 0; i < async->count; ) {
             i32 ret = psh__platform_wait_process(async->items[i], false);
-            if (ret < 0) 
-                return false;
             if (ret) {
                 psh_list_remove_unordered(async, i);
+                if (ret < 0) return false;
             } else {
                 psh__platform_sleep_ms(1);
                 ++i;
@@ -1341,31 +1357,28 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num) 
 }
 // arena IMPL END
 
-// unity build IMPL START
+// build IMPL START
 
 #if defined(__APPLE__) || defined(__linux__)
 
-static inline
-psh_ternary psh__needs_rebuild(byte *executable, byte *src[], usize src_count) {
-    struct stat statbuf = {0};
-    if (stat(executable, &statbuf) < 0) {
-        // Executable does not exist
+psh_ternary psh_needs_rebuild(byte *output, byte *dependencies[], usize dependency_count) {
+    struct stat info = {0};
+    if (stat(output, &info) < 0) {
+        // Output file does not exist
         if (errno == ENOENT) return true;
 
-        psh_logger(PSH_ERROR, "could not get info about executable %s: %s", executable, strerror(errno));
+        psh_logger(PSH_ERROR, "Could not stat output %s: %s", output, strerror(errno));
         return psh_err;
     }
-    time_t exec_mod_time = statbuf.st_mtime;
 
-    for (usize i = 0; i < src_count; ++i) {
-        byte *source = src[i];
-        if (stat(source, &statbuf) < 0) {
-            psh_logger(PSH_ERROR, "could not get info about source %s: %s", source, strerror(errno));
+    time_t output_modification_time = info.st_mtime;
+    for (usize i = 0; i < dependency_count; ++i) {
+        if (stat(dependencies[i], &info) < 0) {
+            psh_logger(PSH_ERROR, "Could not stat dependency %s: %s", dependencies[i], strerror(errno));
             return psh_err;
         }
 
-        time_t source_mod_time = statbuf.st_mtime;
-        if (source_mod_time > exec_mod_time) return true;
+        if (info.st_mtime > output_modification_time) return true;
     }
 
     return false;
@@ -1377,7 +1390,7 @@ void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count)
     byte *executable = psh_shift(argv, argc);
     byte *source = src[0];
 
-    psh_ternary needs_rebuild = psh__needs_rebuild(executable, src, src_count);
+    psh_ternary needs_rebuild = psh_needs_rebuild(executable, src, src_count);
     if (needs_rebuild == psh_err) exit(EXIT_FAILURE);
     if (needs_rebuild == false) return;
 
@@ -1430,19 +1443,21 @@ Sources psh__tokenize_deps(usize len, byte string[len]) {
     usize position = 0;
     Sources sources = {0};
 
+    // string is of form source: dep1 dep2 dep3 ...
     // skip until and over ':'
-    while (string[position] != ':' && position < len) ++position;
+    while (position < len && string[position] != ':') ++position;
+    if (position == len) return sources;
     ++position;
 
     while (position < len) {
-        while (psh__is_ws_or_bs(string[position]) && position < len) ++position;
+        while (position < len && psh__is_ws_or_bs(string[position])) ++position;
+        if (position == len) break;
 
         usize start = position;
-        while (psh__is_path(string[position]) && position < len) ++position;
+        while (position < len && psh__is_path(string[position])) ++position;
 
         psh_list_append(&sources, string + start);
-        string[position] = 0;
-        ++position;
+        if (position < len) string[position++] = 0;
         // printf("Dep: %s\n", string + start);
     }
 
@@ -1481,7 +1496,135 @@ b32 psh__is_path(byte c) {
            psh__is_alpha(c)       ||
            psh__is_num(c)         ;
 }
-// unity build IMPL END
+
+static b32 psh__c_build_mkdir_parent(Arena *arena, byte *path) {
+    // Check if path is in current directory or starts with /
+    byte *slash = strrchr(path, '/');
+    if (slash == NULL || slash == path) return true;
+
+    usize size = slash - path;
+    byte *directory = arena_push(arena, byte, size + 1);
+    if (directory == NULL) {
+        psh_logger(PSH_ERROR, "Could not allocate directory path");
+        return false;
+    }
+
+    memcpy(directory, path, size);
+    directory[size] = 0;
+
+    Psh_Cmd cmd = {0};
+    psh_cmd_append(&cmd, "mkdir", "-p", directory);
+    b32 result = psh_cmd_run(&cmd);
+    psh_list_free(cmd);
+    return result;
+}
+
+psh_ternary psh_c_build_object_needs_rebuild(Psh_C_Build *build, byte *source, byte *object) {
+    Psh_Unix_Pipe pipe = {0};
+    if (!psh_pipe_open(&pipe)) return psh_err;
+
+    Psh_Cmd cmd = {0};
+    Psh_Procs procs = {0};
+    Psh_Fd_Reader reader = {.fd = pipe.read_fd};
+    psh_ternary result = psh_err;
+
+    psh_cmd_append(&cmd, PSH_CC, PSH_CC_FLAGS, PSH_CC_MORE_FLAGS);
+    if (build->flag_count > 0) psh_list_append_many(&cmd, build->flags, build->flag_count);
+    psh_cmd_append(&cmd, "-MM", source);
+    if (!psh_cmd_run(&cmd, .async = &procs, .fdout = pipe.write_fd)) goto cleanup;
+
+    // Compiler may block if the output pipe is full, so read it
+    while (!reader.ready)
+        if (!psh_fd_read(&reader)) goto cleanup;
+    if (!psh_procs_block(&procs)) goto cleanup;
+
+    psh_sb_append_null(&reader.store);
+    Sources dependencies = psh__tokenize_deps(reader.store.count - 1, reader.store.items);
+    if (dependencies.count == 0) {
+        psh_logger(PSH_ERROR, "Compiler produced no dependencies for %s", source);
+        goto cleanup;
+    }
+
+    result = psh_needs_rebuild(object, dependencies.items, dependencies.count);
+
+cleanup:
+    if (!reader.ready) psh_fd_close_safe(reader.fd);
+    if (procs.count > 0) psh_procs_block(&procs);
+    psh_list_free(cmd);
+    psh_list_free(procs);
+    psh_list_free(dependencies);
+    psh_list_free(reader.store);
+    return result;
+}
+
+b32 psh_c_build_run(Psh_C_Build *build) {
+    Scratch scratch = scratch_get();
+    Psh_Cmd cmd = {0};
+    Psh_Procs procs = {0};
+    b32 object_rebuilt = false;
+    b32 result = false;
+
+    byte **objects = arena_push(scratch.arena, byte *, build->source_count);
+    if (objects == NULL) {
+        psh_logger(PSH_ERROR, "Could not allocate a list for object names");
+        goto cleanup;
+    }
+
+    for (usize i = 0; i < build->source_count; ++i) {
+        byte *source = build->sources[i];
+        usize source_len = strlen(source);
+        if (source_len < 3 || strcmp(source + source_len - 2, ".c") != 0) {
+            psh_logger(PSH_ERROR, "Source file must end in .c: %s", source);
+            goto cleanup;
+        }
+
+        usize object_capacity = strlen(build->build_dir) + source_len + 2;
+        byte *object = arena_push(scratch.arena, byte, object_capacity);
+        if (object == NULL) {
+            psh_logger(PSH_ERROR, "Could not allocate object path for %s", source);
+            goto cleanup;
+        }
+
+        snprintf(object, object_capacity, "%s/%.*s.o", build->build_dir, (i32)(source_len - 2), source);
+        objects[i] = object;
+
+        psh_ternary needs_rebuild = psh_c_build_object_needs_rebuild(build, source, object);
+        if (needs_rebuild == psh_err) goto cleanup;
+        if (!needs_rebuild) continue;
+        if (!psh__c_build_mkdir_parent(scratch.arena, object)) goto cleanup;
+
+        psh_cmd_append(&cmd, PSH_CC, PSH_CC_FLAGS, PSH_CC_MORE_FLAGS);
+        if (build->flag_count > 0) psh_list_append_many(&cmd, build->flags, build->flag_count);
+        psh_cmd_append(&cmd, "-c", source, "-o", object);
+        if (!psh_cmd_run(&cmd, .async = &procs, .max_procs = build->max_procs)) goto cleanup;
+
+        object_rebuilt = true;
+    }
+
+    if (!psh_procs_block(&procs)) goto cleanup;
+
+    psh_ternary needs_link = object_rebuilt ? true : psh_needs_rebuild(build->output, objects, build->source_count);
+    if (needs_link == psh_err) goto cleanup;
+    if (needs_link) {
+        if (!psh__c_build_mkdir_parent(scratch.arena, build->output)) goto cleanup;
+
+        psh_cmd_append(&cmd, PSH_CC, PSH_CC_FLAGS, PSH_CC_MORE_FLAGS);
+        if (build->flag_count > 0) psh_list_append_many(&cmd, build->flags, build->flag_count);
+        psh_cmd_append(&cmd, "-o", build->output);
+        psh_list_append_many(&cmd, objects, build->source_count);
+        if (!psh_cmd_run(&cmd)) goto cleanup;
+    }
+
+    result = true;
+
+cleanup:
+    if (procs.count > 0 && !psh_procs_block(&procs)) result = false;
+    psh_list_free(cmd);
+    psh_list_free(procs);
+    scratch_end(scratch);
+    return result;
+}
+// build IMPL END
 
 #endif // PSH_CORE_IMPL
 
@@ -1576,6 +1719,7 @@ typedef Psh_Sb                  Sb;
 #define sb_arg                  psh_sb_arg
 
 #define rebuild_unity           psh_rebuild_unity
+#define needs_rebuild           psh_needs_rebuild
 #define REBUILD_UNITY           PSH_REBUILD_UNITY
 #define rebuild_unity_auto      psh_rebuild_unity_auto
 #define REBUILD_UNITY_AUTO      PSH_REBUILD_UNITY_AUTO
@@ -1584,5 +1728,9 @@ typedef Psh_Sb                  Sb;
 #define CC_FLAGS                PSH_CC_FLAGS
 #define CC_MORE_FLAGS           PSH_CC_MORE_FLAGS
 #define CC_CMD                  PSH_CC_CMD
+
+typedef Psh_C_Build                     C_Build;
+#define c_build_object_needs_rebuild    psh_c_build_object_needs_rebuild
+#define c_build_run                     psh_c_build_run
 
 #endif // PSH_CORE_NO_PREFIX
