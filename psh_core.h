@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #if defined(__APPLE__) || defined(__linux__)
     #include <unistd.h>
@@ -382,6 +383,17 @@ typedef enum {
     PSH_NO_LOGS
 } Psh_Log_Level;
 
+typedef void (*Psh_LogHandler)(Psh_Log_Level level, byte const *fmt, va_list args, void *userdata);
+
+typedef struct {
+    Psh_Log_Level min_level;
+    FILE *stream;                 // NULL uses stderr. The caller owns the stream.
+    Psh_LogHandler handler;       // NULL uses the default formatting and stream.
+    void *userdata;
+} Psh_LogConfig;
+
+// Passing a zero-initialized config restores INFO logging to stderr.
+void psh_configure_logging(Psh_LogConfig config);
 void psh_logger(Psh_Log_Level level, byte *fmt, ...);
 // psh_logger END
 
@@ -661,7 +673,6 @@ b32 psh_c_build_run(Psh_C_Build *build);
 
 #ifdef PSH_CORE_IMPL
 
-#include <stdarg.h>
 #include <errno.h>
 
 #if defined(_WIN32)
@@ -741,28 +752,36 @@ void *psh__hash_map_resize(void *items, isize old_capacity, isize new_capacity, 
 
 // psh_logger impl START
 
+static Psh_LogConfig psh__log_config = {.min_level = PSH_INFO};
+
+void psh_configure_logging(Psh_LogConfig config) {
+    psh__log_config = config;
+}
+
 void psh_logger(Psh_Log_Level level, byte *fmt, ...)
 {
-    switch (level) {
-        case PSH_INFO:
-            fprintf(stderr, "[INFO] ");
-            break;
-        case PSH_WARNING:
-            fprintf(stderr, "[WARNING] ");
-            break;
-        case PSH_ERROR:
-            fprintf(stderr, "[ERROR] ");
-            break;
-        case PSH_NO_LOGS: return;
-        default:
-            PSH_UNREACHABLE("psh_logger");
-    }
+    if (level == PSH_NO_LOGS || level < psh__log_config.min_level) return;
 
+    i32 saved_errno = errno;
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    if (psh__log_config.handler != NULL) {
+        psh__log_config.handler(level, fmt, args, psh__log_config.userdata);
+    } else {
+        FILE *stream = psh__log_config.stream != NULL ? psh__log_config.stream : stderr;
+        switch (level) {
+            case PSH_INFO:    fputs("[INFO] ", stream); break;
+            case PSH_WARNING: fputs("[WARNING] ", stream); break;
+            case PSH_ERROR:   fputs("[ERROR] ", stream); break;
+            default: PSH_UNREACHABLE("psh_logger");
+        }
+        vfprintf(stream, fmt, args);
+        fputs("\n", stderr);
+        fflush(stderr);
+    }
     va_end(args);
-    fprintf(stderr, "\n");
+
+    errno = saved_errno;
 }
 // psh_logger impl END
 
@@ -1668,10 +1687,13 @@ cleanup:
 #define time_now_ns             psh_time_now_ns
 
 typedef Psh_Log_Level           Log_Level;
+typedef Psh_LogHandler          LogHandler;
+typedef Psh_LogConfig           LogConfig;
 #define INFO                    PSH_INFO
 #define WARNING                 PSH_WARNING
 #define ERROR                   PSH_ERROR
 #define NO_LOGS                 PSH_NO_LOGS
+#define configure_logging       psh_configure_logging
 #define logger                  psh_logger
 
 typedef Psh_Proc                Proc;
