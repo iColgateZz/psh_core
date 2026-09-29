@@ -42,6 +42,9 @@ typedef uintptr_t   uptr;
 typedef ptrdiff_t   isize;
 typedef size_t      usize;
 
+typedef i32 psh_ternary;
+#define psh_err -1
+
 #define true 1
 #define false 0
 
@@ -415,12 +418,12 @@ typedef i32 Psh_Fd;
 #define PSH_INVALID_FD -1
 
 Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions);
-Psh_Fd psh_fd_openr(byte *path);
-Psh_Fd psh_fd_openw(byte *path);
-Psh_Fd psh_fd_opena(byte *path);
+Psh_Fd psh_fd_open_read(byte *path);
+Psh_Fd psh_fd_open_write(byte *path);
+Psh_Fd psh_fd_open_append(byte *path);
 void psh_fd_close(Psh_Fd fd);
 void psh_fd_close_safe(Psh_Fd fd);
-b32 psh_fd_not_default(Psh_Fd fd);
+b32 psh_fd_not_standard(Psh_Fd fd);
 // fd END
 
 // cmd START
@@ -618,10 +621,34 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num);
         ((Arena *[]){NULL, __VA_ARGS__}), (sizeof((Arena *[]){NULL, __VA_ARGS__}) / sizeof(Arena *)))
 // arena END
 
-// build START
+// filesystem START
 
-typedef i32 psh_ternary;
-#define psh_err -1
+typedef enum {
+    PSH_FILE_REGULAR,
+    PSH_FILE_DIRECTORY,
+    PSH_FILE_SYMLINK,
+    PSH_FILE_SPECIAL, // FIFOs, sockets, and device nodes.
+} Psh_FileType;
+
+typedef struct {
+    psh_s8 *items;
+    usize count;
+} Psh_FilePaths;
+
+b32 psh_read_file(Arena *arena, byte *path, psh_s8 *contents);
+b32 psh_write_file(byte *path, psh_s8 contents);
+b32 psh_rename_file(byte *old_path, byte *new_path);
+b32 psh_delete_file(byte *path);
+b32 psh_get_file_type(byte *path, Psh_FileType *type);
+b32 psh_file_exists(byte *path);
+b32 psh_mkdir(byte *path);
+b32 psh_read_entire_dir(Arena *arena, byte *path, Psh_FilePaths *children);
+b32 psh_get_current_dir(Arena *arena, psh_s8 *path);
+b32 psh_set_current_dir(byte *path);
+
+// filesystem END
+
+// build START
 
 void psh_rebuild_unity(i32 argc, byte *argv[argc], byte *src[], usize src_count);
 #define PSH_REBUILD_UNITY(argc, argv, ...)                                      \
@@ -776,8 +803,8 @@ void psh_logger(Psh_Log_Level level, byte *fmt, ...)
             default: PSH_UNREACHABLE("psh_logger");
         }
         vfprintf(stream, fmt, args);
-        fputs("\n", stderr);
-        fflush(stderr);
+        fputs("\n", stream);
+        fflush(stream);
     }
     va_end(args);
 
@@ -798,18 +825,17 @@ Psh_Fd psh_fd_open(byte *path, i32 mode, i32 permissions) {
     return result;
 }
 
-//TODO: longer names
-Psh_Fd psh_fd_openr(byte *path) {
+Psh_Fd psh_fd_open_read(byte *path) {
     return psh_fd_open(path, O_RDONLY, 0);
 }
 
-Psh_Fd psh_fd_openw(byte *path) {
+Psh_Fd psh_fd_open_write(byte *path) {
     return psh_fd_open(path,
                    O_WRONLY | O_CREAT | O_TRUNC,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-Psh_Fd psh_fd_opena(byte *path) {
+Psh_Fd psh_fd_open_append(byte *path) {
     return psh_fd_open(path,
                    O_WRONLY | O_CREAT | O_APPEND,
                    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -822,12 +848,11 @@ void psh_fd_close(Psh_Fd fd) {
 #endif // Apple || linux
 
 void psh_fd_close_safe(Psh_Fd fd) {
-    if (psh_fd_not_default(fd))
+    if (psh_fd_not_standard(fd))
         psh_fd_close(fd);
 }
 
-//TODO: rename to not_standard
-b32 psh_fd_not_default(Psh_Fd fd) {
+b32 psh_fd_not_standard(Psh_Fd fd) {
     return fd > STDERR_FILENO;
 }
 // fd IMPL END
@@ -1074,13 +1099,13 @@ static inline void psh__pipeline_setup_opt(
     // If prev_cmd_opt has non-default settings it means 
     // the user has opened a file for redirection. 
     // Close the fds from pipes and leave user fds.
-    if (psh_fd_not_default(prev_cmd_opt->fdin)) {
+    if (psh_fd_not_standard(prev_cmd_opt->fdin)) {
         psh_fd_close(p_fdin);
     } else { // Otherwise continue with pipe fds
         prev_cmd_opt->fdin = p_fdin;
     }
 
-    if (psh_fd_not_default(prev_cmd_opt->fdout)) {
+    if (psh_fd_not_standard(prev_cmd_opt->fdout)) {
         psh_fd_close(p_fdout);
     } else {
         prev_cmd_opt->fdout = p_fdout;
@@ -1375,6 +1400,220 @@ Scratch scratch_get_(Arena *conflicting_permanent_arenas[], usize conflict_num) 
     PSH_UNREACHABLE("scratch arena not found");
 }
 // arena IMPL END
+
+// filesystem IMPL START
+
+b32 psh_read_file(Arena *arena, byte *path, psh_s8 *contents) {
+    Psh_Fd fd = psh_fd_open_read(path);
+    if (fd == PSH_INVALID_FD) return false;
+
+    Psh_Fd_Reader reader = {.fd = fd};
+    b32 result = false;
+    while (!reader.ready) {
+        if (!psh_fd_read(&reader, .keep_fd_open = true)) goto cleanup;
+    }
+
+    if (reader.store.count > PTRDIFF_MAX) {
+        psh_logger(PSH_ERROR, "Could not read file %s: contents are too large for a string slice", path);
+        goto cleanup;
+    }
+
+    byte *data = arena_push(arena, byte, reader.store.count + 1);
+    if (data == NULL) {
+        psh_logger(PSH_ERROR, "Could not allocate file contents for %s", path);
+        goto cleanup;
+    }
+
+    if (reader.store.count > 0) memcpy(data, reader.store.items, reader.store.count);
+    data[reader.store.count] = 0;
+
+    *contents = (psh_s8) {.s = data, .len = (isize)reader.store.count};
+    result = true;
+
+cleanup:
+    psh_fd_close(fd);
+    psh_list_free(reader.store);
+    return result;
+}
+
+b32 psh_write_file(byte *path, psh_s8 contents) {
+    FILE *file = fopen(path, "wb");
+    if (file == NULL) {
+        psh_logger(PSH_ERROR, "Could not open file %s for writing: %s", path, strerror(errno));
+        return false;
+    }
+
+    b32 result = true;
+    if (contents.len > 0 && fwrite(contents.s, sizeof(byte), contents.len, file) != contents.len) {
+        psh_logger(PSH_ERROR, "Could not write file %s: %s", path, strerror(errno));
+        result = false;
+    }
+
+    if (fclose(file) != 0) {
+        psh_logger(PSH_ERROR, "Could not close file %s after writing: %s", path, strerror(errno));
+        result = false;
+    }
+
+    return result;
+}
+
+b32 psh_rename_file(byte *old_path, byte *new_path) {
+    if (rename(old_path, new_path) != 0) {
+        psh_logger(PSH_ERROR, "Could not rename %s to %s: %s", old_path, new_path, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+b32 psh_delete_file(byte *path) {
+    if (remove(path) != 0) {
+        psh_logger(PSH_ERROR, "Could not delete %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+
+#include <dirent.h>
+
+b32 psh_get_file_type(byte *path, Psh_FileType *type) {
+    struct stat info = {0};
+    if (lstat(path, &info) < 0) {
+        psh_logger(PSH_ERROR, "Could not get file type of %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    if      (S_ISREG(info.st_mode)) *type = PSH_FILE_REGULAR;
+    else if (S_ISDIR(info.st_mode)) *type = PSH_FILE_DIRECTORY;
+    else if (S_ISLNK(info.st_mode)) *type = PSH_FILE_SYMLINK;
+    else                            *type = PSH_FILE_SPECIAL;
+
+    return true;
+}
+
+b32 psh_file_exists(byte *path) {
+    struct stat info = {0};
+    if (lstat(path, &info) == 0) return true;
+    if (errno == ENOENT || errno == ENOTDIR) return false;
+
+    psh_logger(PSH_ERROR, "Could not check whether %s exists: %s", path, strerror(errno));
+    return false;
+}
+
+b32 psh_mkdir(byte *path) {
+    if (mkdir(path, 0755) == 0) return true;
+
+    if (errno == EEXIST) {
+        psh_logger(PSH_INFO, "Directory '%s' already exists", path);
+        return false;
+    }
+
+    psh_logger(PSH_ERROR, "Could not create directory %s: %s", path, strerror(errno));
+    return false;
+}
+
+b32 psh_read_entire_dir(Arena *arena, byte *path, Psh_FilePaths *children) {
+    DIR *directory = opendir(path);
+    if (directory == NULL) {
+        psh_logger(PSH_ERROR, "Could not open directory %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    struct { psh_s8 *items; usize count, capacity; } names = {0};
+    ArenaSP savepoint = arena_savepoint(arena);
+    b32 result = true;
+
+    for (;;) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) {
+            if (errno != 0) {
+                psh_logger(PSH_ERROR, "Could not read directory %s: %s", path, strerror(errno));
+                result = false;
+            }
+            break;
+        }
+
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        usize length = strlen(entry->d_name);
+        byte *name = arena_push(arena, byte, length + 1);
+        if (name == NULL) {
+            psh_logger(PSH_ERROR, "Could not allocate directory entry name for %s", path);
+            result = false;
+            break;
+        }
+
+        memcpy(name, entry->d_name, length + 1);
+        psh_list_append(&names, ((psh_s8) {.s = name, .len = (isize)length}));
+    }
+
+    if (closedir(directory) < 0) {
+        psh_logger(PSH_ERROR, "Could not close directory %s: %s", path, strerror(errno));
+        result = false;
+    }
+
+    psh_s8 *items = NULL;
+    if (result && names.count > 0) {
+        items = arena_push(arena, psh_s8, names.count);
+        if (items == NULL) {
+            psh_logger(PSH_ERROR, "Could not allocate directory entries for %s", path);
+            result = false;
+        } else {
+            memcpy(items, names.items, names.count * sizeof(*items));
+        }
+    }
+
+    psh_list_free(names);
+
+    if (!result) arena_restore(arena, savepoint);
+    else *children = (Psh_FilePaths) {.items = items, .count = names.count};
+
+    return result;
+}
+
+b32 psh_get_current_dir(Arena *arena, psh_s8 *directory) {
+    ArenaSP savepoint = arena_savepoint(arena);
+    usize capacity = 256;
+
+    for (;;) {
+        byte *path = arena_push(arena, byte, capacity);
+        if (path == NULL) {
+            psh_logger(PSH_ERROR, "Could not allocate current directory path");
+            return false;
+        }
+
+        if (getcwd(path, capacity) != NULL) {
+            *directory = (psh_s8) {.s = path, .len = strlen(path)};
+            return true;
+        }
+
+        i32 error = errno;
+        arena_restore(arena, savepoint);
+        if (error != ERANGE) {
+            psh_logger(PSH_ERROR, "Could not get current directory: %s", strerror(error));
+            return false;
+        }
+
+        capacity *= 2;
+    }
+}
+
+b32 psh_set_current_dir(byte *path) {
+    if (chdir(path) < 0) {
+        psh_logger(PSH_ERROR, "Could not set current directory to %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+#endif // Apple || linux
+
+// filesystem IMPL END
 
 // build IMPL START
 
@@ -1703,12 +1942,12 @@ typedef Psh_Procs               Procs;
 typedef Psh_Fd                  Fd;
 #define INVALID_FD              PSH_INVALID_FD
 #define fd_open                 psh_fd_open
-#define fd_openr                psh_fd_openr
-#define fd_openw                psh_fd_openw
-#define fd_opena                psh_fd_opena
+#define fd_open_read            psh_fd_open_read
+#define fd_open_write           psh_fd_open_write
+#define fd_open_append          psh_fd_open_append
 #define fd_close                psh_fd_close
 #define fd_close_safe           psh_fd_close_safe
-#define fd_not_default          psh_fd_not_default
+#define fd_not_standard         psh_fd_not_standard
 
 typedef Psh_Cmd                 Cmd;
 typedef Psh_Cmd_Opt             Cmd_Opt;
@@ -1739,6 +1978,24 @@ typedef Psh_Sb                  Sb;
 #define sb_append_cstr          psh_sb_append_cstr
 #define sb_append_null          psh_sb_append_null
 #define sb_arg                  psh_sb_arg
+
+typedef Psh_FileType            FileType;
+typedef Psh_FilePaths           FilePaths;
+#define FILE_REGULAR            PSH_FILE_REGULAR
+#define FILE_DIRECTORY          PSH_FILE_DIRECTORY
+#define FILE_SYMLINK            PSH_FILE_SYMLINK
+#define FILE_SPECIAL            PSH_FILE_SPECIAL
+#define read_file               psh_read_file
+#define write_file              psh_write_file
+#define copy_file               psh_copy_file
+#define rename_file             psh_rename_file
+#define delete_file             psh_delete_file
+#define get_file_type           psh_get_file_type
+#define file_exists             psh_file_exists
+#define mkdir_if_not_exists     psh_mkdir
+#define read_entire_dir         psh_read_entire_dir
+#define get_current_dir         psh_get_current_dir
+#define set_current_dir         psh_set_current_dir
 
 #define rebuild_unity           psh_rebuild_unity
 #define needs_rebuild           psh_needs_rebuild

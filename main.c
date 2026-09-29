@@ -55,7 +55,7 @@ i32 example_pipeline() {
         pipeline_chain(&p, &cmd);
 
         cmd_append(&cmd, "xxd");
-        pipeline_chain(&p, &cmd, .fdin = fd_openr("test.sh"), .fdout = fd_openw("file.txt"));
+        pipeline_chain(&p, &cmd, .fdin = fd_open_read("test.sh"), .fdout = fd_open_write("file.txt"));
     } if (p.error) return 1;
 
     pipeline(&p, .async = &procs) {
@@ -148,7 +148,7 @@ i32 example_redirect_stderr_to_stdout() {
 
 i32 example_use_one_fd_for_multiple_cmds() {
     static byte *path = "some_path.txt";
-    Fd fdout = fd_opena(path);
+    Fd fdout = fd_open_append(path);
 
     Cmd cmd = {0};
     cmd_append(&cmd, "echo", "lol");
@@ -166,7 +166,7 @@ i32 example_use_one_fd_for_multiple_cmds() {
     
     //TODO: open fd for RW and don't close in second cmd
     // reuse the fd here and let fd_read close it
-    Fd_Reader reader = {.fd = fd_openr(path)};
+    Fd_Reader reader = {.fd = fd_open_read(path)};
     if (!fd_read(&reader)) return 1;
 
     printf("Read: %.*s", sb_arg(reader.store));
